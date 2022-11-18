@@ -1,5 +1,12 @@
 CC = gcc
-CFLAGS = -fno-stack-protector -z execstack -Wall -Iutil -Iatm -Ibank -Irouter -I.
+
+ifeq ($(CC),clang)
+  STACK_FLAGS = -fno-stack-protector -Wl,-allow_stack_execute
+else
+  STACK_FLAGS = -fno-stack-protector -z execstack
+endif
+
+CFLAGS = ${STACK_FLAGS} -Wall -Iutil -Iatm -Ibank -Irouter -I.
 
 all: bin bin/atm bin/bank bin/router
 
