@@ -1,10 +1,12 @@
 # ATM Design and Implementation
 
 This is a two-part project, the first of which is a *team* effort,
-while the second is an *individual* effort. Because the second part of
-the project will make use of the results of the first part, there will
-not be extensions granted. The second part is due at the end of the
-semester, so extensions cannot be granted.
+while the second is an *individual* effort. Because the second part
+of the project will make use of the results of the first part, only
+submissions that reach a certain threshold of functionality by the
+nominal deadline will be targets for the second part.  The second
+part is due at the end of the semester, so extensions cannot be
+granted.
 
 In this project you will first design and implement a prototype
 ATM/Bank system. Then you will get a chance to (try to) attack other
