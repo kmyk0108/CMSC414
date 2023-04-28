@@ -1,1 +1,6 @@
 *~
+*.card
+bin/
+*.atm
+*.bank
+
