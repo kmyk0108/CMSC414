@@ -16,7 +16,7 @@ for clarification well in advance.*
 
 ## Overview
 
- 1. You may work in teams of at most four people. Sign up for your
+ 1. You may work in teams of at most five people. Sign up for your
     teams on ELMS under "People">"Groups".
 
  2. You will design and implement three programs: an *ATM*, a *bank*,
