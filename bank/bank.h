@@ -26,6 +26,9 @@ typedef struct _Bank
     int sockfd;
     struct sockaddr_in rtr_addr;
     struct sockaddr_in bank_addr;
+    char * bank_file;
+    char users[500][263];
+    int user_index;
 
     // Protocol state
     // TODO add more, as needed
