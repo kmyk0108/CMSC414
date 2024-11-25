@@ -157,7 +157,7 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             printf("Error creating card file for %s\n", username);
         } else { //.card file does not exist yet
             char temp_str[271] = "";
-            sprintf(temp_str, "%s\n%s", username, str_pin);
+            sprintf(temp_str, "%s\n%s", str_pin, username);
             const char * str = temp_str;
             //write username and pin to .card file
             write(ptr, str, strlen(str));
@@ -334,6 +334,82 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
                 
         }
 
+    } else if (strstr(command, "withdraw")) {
+        strtok(command, " ");
+        char * username = strtok(NULL, " ");
+        memmove(username, username+1, strlen(username));
+        username[strlen(username) - 1] = '\0';
+        username[strlen(username) - 1] = '\0';
+        char * token = strtok(NULL, " ");
+        char * user_info[2];
+        int index = 0;
+
+        while (token != NULL) {
+            user_info[index] = token;
+            index += 1;
+            token = strtok(NULL, " ");
+        }
+        user_info[1][strlen(user_info[1]) - 1] = '\0';
+        if (user_info[1][0] == '-') {
+             printf("Usage: withdraw <amt>\n");
+            return;
+        }
+
+        char *endptr;
+        errno = 0;
+        char * str_amt = user_info[1];
+        long n = strtol(str_amt, &endptr, 0);
+        if (str_amt == endptr) { //non-numeric characters - invalid
+            printf("Usage: withdraw <amt>\n");
+            return;
+        } else if (errno == ERANGE || n > INT_MAX) { //larger than greatest int in c
+            printf("Insufficient funds\n");
+            return;
+        }
+
+        int withdraw_amt = atoi(str_amt);
+
+        int found_index = 0;
+        char updated_user[263];
+        //iterate through all current users
+        for (int i = 0; i < bank->user_index; i++) {
+            char curr_user[263];
+            updated_user[0] = '\0';
+            strcpy(curr_user, bank->users[i]);
+            //if current line contains username 
+            if (strstr(curr_user, username)) {
+                found_index = i;
+                char * curr_user_info = strtok(curr_user, " ");
+                int times_run = 0;
+                while (curr_user_info != NULL) {
+                    if (times_run == 1) { //true on third arg, amount to add
+                        int temp_bal = atoi(curr_user_info);
+                        if (temp_bal < withdraw_amt) {
+                            printf("Insufficient funds\n");
+                            return;
+                        } else {
+                            printf("$%d dispensed\n", withdraw_amt);
+                            temp_bal -= withdraw_amt;
+                            sprintf(curr_user_info, "%d", temp_bal);
+                            strcat(updated_user, " ");
+                            strcat(updated_user, curr_user_info);
+                            strcat(updated_user, "\n");
+                        }
+                        
+                    } else {
+                        //use updated user to store the new line of information
+                        strcat(updated_user, curr_user_info);
+                    }
+                    times_run += 1;
+                    curr_user_info = strtok(NULL, " ");
+                }
+
+            }
+        }
+
+        //copy new line into existing bank->users variable
+        strcpy(bank->users[found_index], updated_user);
+
     } else {
         printf("Invalid command\n");
         return;
@@ -342,14 +418,7 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
 
 void bank_process_remote_command(Bank *bank, char *command, size_t len)
 {
-    if (strstr(command, "withdraw")) {
-        strtok(command, " ");
-        char * amount = strtok(NULL, " ");
-        
-    }
-    bank_process_local_command(bank, command, len);
-
-    
+  
     /*
      * The following is a toy example that simply receives a
      * string from the ATM, prepends "Bank got: " and echoes
