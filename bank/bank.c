@@ -334,7 +334,15 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
                 
         }
 
-    } else if (strstr(command, "withdraw")) {
+    } else {
+        printf("Invalid command\n");
+        return;
+    }
+}
+
+void bank_process_remote_command(Bank *bank, char *command, size_t len)
+{
+    if (strstr(command, "withdraw")) {
         strtok(command, " ");
         char * username = strtok(NULL, " ");
         memmove(username, username+1, strlen(username));
@@ -410,15 +418,7 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
         //copy new line into existing bank->users variable
         strcpy(bank->users[found_index], updated_user);
 
-    } else {
-        printf("Invalid command\n");
-        return;
-    }
-}
-
-void bank_process_remote_command(Bank *bank, char *command, size_t len)
-{
-  
+    } 
     /*
      * The following is a toy example that simply receives a
      * string from the ATM, prepends "Bank got: " and echoes
