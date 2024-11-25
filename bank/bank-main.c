@@ -8,8 +8,17 @@
 #include <sys/select.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
 #include "bank.h"
 #include "ports.h"
+
+#define ERROR_USAGE 62
+#define ERROR_FILE_EXISTS 63
+#define ERROR_FILE_CREATION 64
+#define SUCCESS 0
 
 static const char prompt[] = "BANK: ";
 
@@ -19,7 +28,13 @@ int main(int argc, char**argv)
    char sendline[1000];
    char recvline[1000];
 
-   Bank *bank = bank_create();
+   if (argc != 2) {
+        printf("Usage:  bank <filename>\n");
+        return ERROR_USAGE;
+    }
+
+    char * filename = strdup(argv[1]);
+   Bank *bank = bank_create(filename);
 
    printf("%s", prompt);
    fflush(stdout);
@@ -45,6 +60,5 @@ int main(int argc, char**argv)
            bank_process_remote_command(bank, recvline, n);
        }
    }
-
    return EXIT_SUCCESS;
 }
