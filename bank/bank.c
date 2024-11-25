@@ -10,29 +10,28 @@
 
 #define ERROR_FILE_CREATION 64
 
-Bank* bank_create(const char * filename)
+Bank *bank_create(const char *filename)
 {
-    Bank *bank = (Bank*) malloc(sizeof(Bank));
-    if(bank == NULL)
+    Bank *bank = (Bank *)malloc(sizeof(Bank));
+    if (bank == NULL)
     {
         perror("Could not allocate Bank");
         exit(1);
     }
 
     // Set up the network state
-    bank->sockfd=socket(AF_INET,SOCK_DGRAM,0);
+    bank->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
-    bzero(&bank->rtr_addr,sizeof(bank->rtr_addr));
+    bzero(&bank->rtr_addr, sizeof(bank->rtr_addr));
     bank->rtr_addr.sin_family = AF_INET;
-    bank->rtr_addr.sin_addr.s_addr=inet_addr("127.0.0.1");
-    bank->rtr_addr.sin_port=htons(ROUTER_PORT);
+    bank->rtr_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    bank->rtr_addr.sin_port = htons(ROUTER_PORT);
 
     bzero(&bank->bank_addr, sizeof(bank->bank_addr));
     bank->bank_addr.sin_family = AF_INET;
-    bank->bank_addr.sin_addr.s_addr=inet_addr("127.0.0.1");
+    bank->bank_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     bank->bank_addr.sin_port = htons(BANK_PORT);
-    bind(bank->sockfd,(struct sockaddr *)&bank->bank_addr,sizeof(bank->bank_addr));
-
+    bind(bank->sockfd, (struct sockaddr *)&bank->bank_addr, sizeof(bank->bank_addr));
 
     char bank_file[strlen(filename) + 2];
     bank_file[0] = '\0';
@@ -48,7 +47,7 @@ Bank* bank_create(const char * filename)
 
 void bank_free(Bank *bank)
 {
-    if(bank != NULL)
+    if (bank != NULL)
     {
         close(bank->sockfd);
         free(bank);
@@ -59,7 +58,7 @@ ssize_t bank_send(Bank *bank, char *data, size_t data_len)
 {
     // Returns the number of bytes sent; negative on error
     return sendto(bank->sockfd, data, data_len, 0,
-                  (struct sockaddr*) &bank->rtr_addr, sizeof(bank->rtr_addr));
+                  (struct sockaddr *)&bank->rtr_addr, sizeof(bank->rtr_addr));
 }
 
 ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len)
@@ -86,16 +85,21 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        //check username
-        char * username = user_info[1];
-        if (strlen(username) > 250) {
+        // check username
+        char *username = user_info[1];
+        if (strlen(username) > 250)
+        {
             printf("Usage:  create-user <user-name> <pin> <balance>\n");
             return;
-        } else {
+        }
+        else
+        {
             index = 0;
-            while (username[index] != '\0') {
-                //non-letter characters in username - invalid
-                if (isalpha(username[index]) == 0) {
+            while (username[index] != '\0')
+            {
+                // non-letter characters in username - invalid
+                if (isalpha(username[index]) == 0)
+                {
                     printf("Usage:  create-user <user-name> <pin> <balance>\n");
                     return;
                 }
@@ -338,20 +342,26 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
 
 void bank_process_remote_command(Bank *bank, char *command, size_t len)
 {
-    // TODO: Implement the bank side of the ATM-bank protocol
+    if (strstr(command, "withdraw")) {
+        strtok(command, " ");
+        char * amount = strtok(NULL, " ");
+        
+    }
+    bank_process_local_command(bank, command, len);
 
-	/*
-	 * The following is a toy example that simply receives a
-	 * string from the ATM, prepends "Bank got: " and echoes 
-	 * it back to the ATM before printing it to stdout.
-	 */
+    
+    /*
+     * The following is a toy example that simply receives a
+     * string from the ATM, prepends "Bank got: " and echoes
+     * it back to the ATM before printing it to stdout.
+     */
 
-	/*
+    /*
     char sendline[1000];
     command[len]=0;
     sprintf(sendline, "Bank got: %s", command);
     bank_send(bank, sendline, strlen(sendline));
     printf("Received the following:\n");
     fputs(command, stdout);
-	*/
+    */
 }
