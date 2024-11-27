@@ -15,7 +15,7 @@ static const char prompt[] = "ATM: ";
 
 int main(int argc, char **argv)
 {
-    char user_input[1000];
+    char user_input[10000];
 
     if (argc != 2)
     {

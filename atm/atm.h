@@ -17,6 +17,13 @@
 #include <netinet/in.h>
 #include <stdio.h>
 
+// Structure to store login attempts for each user
+typedef struct LoginAttempt {
+    char username[251];           // Username (key)
+    int attempts;                // Number of attempts
+    struct LoginAttempt *next;   // Pointer to the next user
+} LoginAttempt;
+
 typedef struct _ATM
 {
     // Networking state
@@ -25,9 +32,11 @@ typedef struct _ATM
     struct sockaddr_in atm_addr;
 
     // Protocol state
-    // TODO add more, as needed
     char * curr_user;
     int is_logged_in;
+
+    // Track login attempts
+    LoginAttempt *attempts_list_head; // Head of the linked list for login attempts
 } ATM;
 
 ATM* atm_create();

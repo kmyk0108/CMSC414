@@ -69,40 +69,18 @@ ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len)
 
 void bank_process_local_command(Bank *bank, char *command, size_t len)
 {
-    // open .bank file before starting any process
-    FILE *bank_fd = fopen(bank->bank_file, "r");
-    char line[262];
-
-    if (bank_fd != NULL)
-    {
+    if (strstr(command, "create-user")) {
+        char * user_info[4];
+        char * token = strtok(command, " ");
         int index = 0;
-        while (fgets(line, sizeof(line), bank_fd))
-        {
-            // copy all current users in file into bank->users variable
-            strcpy(bank->users[index], line);
-            index += 1;
-        }
-        // have user_index to track number of current users
-        bank->user_index = index;
-    }
 
-    if (strstr(command, "create-user"))
-    {
-        char *user_info[4];
-        char *token = strtok(command, " ");
-        int index = 0;
-        int pin;
-        int balance;
-
-        while (token != NULL)
-        {
+        while (token != NULL) {
             user_info[index] = token;
             index += 1;
             token = strtok(NULL, " ");
         }
-        // if less than 4 args
-        if (index < 4)
-        {
+        //if less than 4 args
+        if (index != 4) {
             printf("Usage:  create-user <user-name> <pin> <balance>\n");
             return;
         }
@@ -128,203 +106,156 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
                 index += 1;
             }
         }
-
-        char *str_pin;
-        // check pin
-        if (strlen(user_info[2]) != 4)
-        {
+        
+        char * str_pin;
+        //check pin
+        if (strlen(user_info[2]) != 4) {
             printf("Usage:  create-user <user-name> <pin> <balance>\n");
             return;
-        }
-        else
-        {
+        } else {
             str_pin = user_info[2];
             index = 0;
-            while (str_pin[index] != '\0')
-            {
-                // non-numeric characters in pin - invalid
-                if (isdigit(str_pin[index]) == 0)
-                {
+            while (str_pin[index] != '\0') {
+                //non-numeric characters in pin - invalid
+                if (isdigit(str_pin[index]) == 0) {
                     printf("Usage:  create-user <user-name> <pin> <balance>\n");
                     return;
                 }
                 index += 1;
             }
-            pin = atoi(str_pin);
         }
 
-        // check balance
-        if (user_info[3][0] == '-')
-        { // if negative
-            printf("Usage:  create-user <user-name> <pin> <balance>\n");
+        //check balance
+        if (user_info[3][0] == '-') { //if negative
+             printf("Usage:  create-user <user-name> <pin> <balance>\n");
             return;
         }
         char *endptr;
         errno = 0;
-        char *str_bal = user_info[3];
+        char * str_bal = user_info[3];
         long n = strtol(str_bal, &endptr, 0);
-        // check if greater than largest int in c or non-numeric characters
-        if (errno == ERANGE || n > INT_MAX || str_bal == endptr)
-        {
+        //check if greater than largest int in c or non-numeric characters
+        if (errno == ERANGE || n > INT_MAX || str_bal == endptr) {
             printf("Usage:  create-user <user-name> <pin> <balance>\n");
             return;
         }
-        balance = atoi(str_bal);
 
-        char *card_file = (char *)malloc(strlen(username) + 1);
+        char * card_file = (char*)malloc(strlen(username) + 1);
         strcpy(card_file, username);
         strcat(card_file, ".card");
 
         FILE *file = fopen(card_file, "r");
-        // if .card file already exists for user
-        if (file)
-        {
+        //if .card file already exists for user
+        if (file) {
             fclose(file);
             printf("Error: user %s already exists\n", username);
             return;
-        }
+        } 
 
         int ptr = open(card_file, O_WRONLY | O_CREAT | O_EXCL, 0666);
-        if (ptr == -1)
-        {
+        if (ptr == -1) {
             printf("Error creating card file for %s\n", username);
-        }
-        else
-        { //.card file does not exist yet
+        } else { //.card file does not exist yet
             char temp_str[271] = "";
             sprintf(temp_str, "%s\n%s", str_pin, username);
-            const char *str = temp_str;
-            // write username and pin to .card file
+            const char * str = temp_str;
+            //write username and pin to .card file
             write(ptr, str, strlen(str));
             close(ptr);
             free(card_file);
             printf("Created user %s\n", username);
-
-            FILE *bank_fd = fopen(bank->bank_file, "w");
-            if (bank_fd != NULL)
-            {
-                // new_user stores username and balance to add to bank->users variable
-                char new_user[262];
-                strcpy(new_user, username);
-                strcat(new_user, " ");
-                strcat(new_user, str_bal);
-                strcpy(bank->users[bank->user_index], new_user);
-                bank->user_index += 1;
-                for (int i = 0; i < bank->user_index; i++)
-                {
-                    // overwrite .bank file with all users (including new one)
-                    fprintf(bank_fd, "%s", bank->users[i]);
-                }
-            }
-            fclose(bank_fd);
+            char new_user[262];
+            strcpy(new_user, username);
+            strcat(new_user, " ");
+            strcat(new_user, str_bal);
+            strcpy(bank->users[bank->user_index], new_user);
+            bank->user_index += 1;
         }
-    }
-    else if (strstr(command, "deposit"))
-    {
-        char *username;
+    } else if (strstr(command, "deposit")) {
+        char * username;
         int amount;
-        char *user_info[3];
-        char *token = strtok(command, " ");
+        char * user_info[3];
+        char * token = strtok(command, " ");
         int index = 0;
 
-        while (token != NULL)
-        {
+        while (token != NULL) {
             user_info[index] = token;
             index += 1;
             token = strtok(NULL, " ");
         }
 
-        // less than 3 args
-        if (index < 3)
-        {
+        //less than 3 args
+        if (index != 3) {
             printf("Usage:  deposit <user-name> <amt>\n");
             return;
         }
-
-        // check username
+        
+        //check username
         username = user_info[1];
-        if (strlen(username) > 250)
-        {
+        if (strlen(username) > 250) {
             printf("Usage:  deposit <user-name> <amt>\n");
             return;
-        }
-        else
-        {
+        } else {
             index = 0;
-            while (username[index] != '\0')
-            {
-                // non-alphabetic characters - invalid
-                if (isalpha(username[index]) == 0)
-                {
+            while (username[index] != '\0') {
+                //non-alphabetic characters - invalid
+                if (isalpha(username[index]) == 0) {
                     printf("Usage:  deposit <user-name> <amt>\n");
                     return;
                 }
                 index += 1;
             }
         }
-        // amount negative - invalid
-        if (user_info[2][0] == '-')
-        {
-            printf("Usage:  deposit <user-name> <amt>\n");
+        //amount negative - invalid
+        if (user_info[2][0] == '-') {
+             printf("Usage:  deposit <user-name> <amt>\n");
             return;
         }
         char *endptr;
         errno = 0;
-        char *str_amt = user_info[2];
+        char * str_amt = user_info[2];
         long n = strtol(str_amt, &endptr, 0);
-        if (str_amt == endptr)
-        { // non-numeric characters - invalid
+        if (str_amt == endptr) { //non-numeric characters - invalid
             printf("Usage:  deposit <user-name> <amt>\n");
             return;
-        }
-        else if (errno == ERANGE || n > INT_MAX)
-        { // larger than greatest int in c
+        } else if (errno == ERANGE || n > INT_MAX) { //larger than greatest int in c
             printf("Too rich for this program\n");
             return;
         }
         amount = atoi(str_amt);
 
-        // check if .card file exists
-        char *card_file = (char *)malloc(strlen(username) + 1);
+        //check if .card file exists
+        char * card_file = (char*)malloc(strlen(username) + 1);
         strcpy(card_file, username);
         strcat(card_file, ".card");
 
-        if (access(card_file, F_OK) != 0)
-        {
+        if (access(card_file, F_OK) != 0) {
             printf("No such user\n");
             return;
-        }
-        else
-        { //.card file exists
+        } else { //.card file exists
             printf("$%d added to %s's account\n", amount, username);
             int found_index = 0;
             char updated_user[263];
-            // iterate through all current users
-            for (int i = 0; i < bank->user_index; i++)
-            {
+            //iterate through all current users
+            for (int i = 0; i < bank->user_index; i++) {
                 char curr_user[263];
                 updated_user[0] = '\0';
                 strcpy(curr_user, bank->users[i]);
-                // if current line contains username
-                if (strstr(curr_user, username))
-                {
+                //if current line contains username 
+                if (strstr(curr_user, username)) {
                     found_index = i;
-                    char *curr_user_info = strtok(curr_user, " ");
+                    char * curr_user_info = strtok(curr_user, " ");
                     int times_run = 0;
-                    while (curr_user_info != NULL)
-                    {
-                        if (times_run == 1)
-                        { // true on third arg, amount to add
+                    while (curr_user_info != NULL) {
+                        if (times_run == 1) { //true on third arg, amount to add
                             int temp_bal = atoi(curr_user_info);
                             temp_bal += amount;
                             sprintf(curr_user_info, "%d", temp_bal);
                             strcat(updated_user, " ");
                             strcat(updated_user, curr_user_info);
                             strcat(updated_user, "\n");
-                        }
-                        else
-                        {
-                            // use updated user to store the new line of information
+                        } else {
+                            //use updated user to store the new line of information
                             strcat(updated_user, curr_user_info);
                         }
                         times_run += 1;
@@ -335,60 +266,39 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
                 }
             }
 
-            // copy new line into existing bank->users variable
+            //copy new line into existing bank->users variable
             strcpy(bank->users[found_index], updated_user);
-
-            // overwrite .bank file with new amount
-            FILE *bank_fd = fopen(bank->bank_file, "w");
-            if (bank_fd != NULL)
-            {
-                for (int i = 0; i < bank->user_index; i++)
-                {
-                    fprintf(bank_fd, "%s", bank->users[i]);
-                }
-            }
-
-            fclose(bank_fd);
         }
-    }
-    else if (strstr(command, "balance"))
-    {
-        char *username;
-        int amount;
-        char *user_info[2];
-        char *token = strtok(command, " ");
+
+    } else if (strstr(command, "balance")) {
+        char * username;
+        char * user_info[2];
+        char * token = strtok(command, " ");
         int index = 0;
 
-        while (token != NULL)
-        {
+        while (token != NULL) {
             user_info[index] = token;
             index += 1;
             token = strtok(NULL, " ");
         }
 
-        // less than 2 args
-        if (index < 2)
-        {
+        //less than 2 args
+        if (index != 2) {
             printf("Usage:  balance <user-name> (less than 2 args)\n");
             return;
         }
-
-        // check username
+        
+        //check username
         username = user_info[1];
         username[strlen(username) - 1] = '\0';
-        if (strlen(username) > 250)
-        {
+        if (strlen(username) > 250) {
             printf("Usage:  balance <user-name> (pick shorter username)\n");
             return;
-        }
-        else
-        {
+        } else {
             index = 0;
-            while (username[index] != '\0')
-            {
-                // non-alphabetic characters - invalid
-                if (isalpha(username[index]) == 0)
-                {
+            while (username[index] != '\0') {
+                //non-alphabetic characters - invalid
+                if (isalpha(username[index]) == 0) {
                     printf("Usage:  balance <user-name> (only alphabetic chars allowed)\n");
                     return;
                 }
@@ -396,31 +306,24 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             }
         }
 
-        // check if .card file exists
-        char *card_file = (char *)malloc(strlen(username) + 1);
+        //check if .card file exists
+        char * card_file = (char*)malloc(strlen(username) + 1);
         strcpy(card_file, username);
         strcat(card_file, ".card");
 
-        if (access(card_file, F_OK) != 0)
-        {
+        if (access(card_file, F_OK) != 0) {
             printf("No such user\n");
             return;
-        }
-        else
-        { //.card file exists
+        } else { //.card file exists
             char curr_user[263];
-            for (int i = 0; i < bank->user_index; i++)
-            {
+            for (int i = 0; i < bank->user_index; i++) {
                 strcpy(curr_user, bank->users[i]);
-                // if current line contains username
-                if (strstr(curr_user, username))
-                {
-                    char *curr_user_info = strtok(curr_user, " ");
+                //if current line contains username 
+                if (strstr(curr_user, username)) {
+                    char * curr_user_info = strtok(curr_user, " ");
                     int times_run = 0;
-                    while (curr_user_info != NULL)
-                    {
-                        if (times_run == 1)
-                        {
+                    while (curr_user_info != NULL) {
+                        if (times_run == 1) {
                             printf("$%s", curr_user_info);
                         }
                         curr_user_info = strtok(NULL, " ");
@@ -428,10 +331,10 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
                     }
                 }
             }
+                
         }
-    }
-    else
-    {
+
+    } else {
         printf("Invalid command\n");
         return;
     }
@@ -439,12 +342,119 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
 
 void bank_process_remote_command(Bank *bank, char *command, size_t len)
 {
+    char sendline[10000];
+
     if (strstr(command, "withdraw")) {
-        strtok(command, " ");
-        char * amount = strtok(NULL, " ");
-        
-    }
-    bank_process_local_command(bank, command, len);
+        char * user_info[2];
+        char username[251];
+        int index = 0;
+        int name_index = 0;
+
+        // get username from the command
+        while (command[index] != '(' && command[index] != '\0') {
+            index++;
+        }
+        index++;
+        while (command[index] != ')' && command[index] != '\0') {
+            username[name_index++] = command[index++];
+        }
+        username[name_index] = '\0';
+        user_info[0] = username;
+
+    //     char * next = command[++index];
+    //     if (strncmp(next, "withdraw", 8) == 0 && 
+    //         (command[8] == ' ' || command[8] == '\0')) {
+    // // Command starts with "withdraw" and is followed by a space or ends
+    //         printf("Exact match for 'withdraw'\n");
+    //     }
+        // get amount from the command
+        char command_copy[1000];
+        strncpy(command_copy, command, len);
+        command_copy[len] = '\0';
+
+        char * token = strtok(command_copy, " ");
+        printf("%s\n", token);
+        char *amount = strtok(NULL, " ");
+
+        if (amount == NULL || strtok(NULL, " ") != NULL) {
+            sprintf(sendline, "Usage: withdraw <amt>\n");
+            bank_send(bank, sendline, strlen(sendline));
+            return;
+        }
+        user_info[1] = amount;
+        if (user_info[1][0] == '-') {
+            sprintf(sendline, "Usage: withdraw <amt>\n");
+            bank_send(bank, sendline, strlen(sendline));
+            return;
+        }
+
+        char *endptr;
+        errno = 0;
+        char * str_amt = user_info[1];
+        long n = strtol(str_amt, &endptr, 0);
+        if (str_amt == endptr) { //non-numeric characters - invalid
+            sprintf(sendline, "Usage: withdraw <amt>\n");
+            bank_send(bank, sendline, strlen(sendline));
+            return;
+        } else if (errno == ERANGE || n > INT_MAX) { //larger than greatest int in c
+            sprintf(sendline, "Insufficient funds\n");
+            bank_send(bank, sendline, strlen(sendline));
+            return;
+        }
+        int withdraw_amt = atoi(str_amt);
+
+        int found_index = 0;
+        char updated_user[263];
+        //iterate through all current users
+        for (int i = 0; i < bank->user_index; i++) {
+            char curr_user[263];
+            updated_user[0] = '\0';
+            strcpy(curr_user, bank->users[i]);
+            //if current line contains username 
+            if (strstr(curr_user, username)) {
+                found_index = i;
+                char * curr_user_info = strtok(curr_user, " ");
+                int times_run = 0;
+                while (curr_user_info != NULL) {
+                    if (times_run == 1) { //true on third arg, amount to add
+                        int temp_bal = atoi(curr_user_info);
+                        if (temp_bal < withdraw_amt) {
+                            sprintf(sendline, "Insufficient funds\n");
+                            bank_send(bank, sendline, strlen(sendline));
+                            return;
+                        } else {
+                            temp_bal -= withdraw_amt;
+                            sprintf(curr_user_info, "%d", temp_bal);
+                            strcat(updated_user, " ");
+                            strcat(updated_user, curr_user_info);
+                            strcat(updated_user, "\n");
+                            sprintf(sendline, "$%d dispensed\n", withdraw_amt);
+                            bank_send(bank, sendline, strlen(sendline));
+                            return;
+                        }
+                        
+                    } else {
+                        //use updated user to store the new line of information
+                        strcat(updated_user, curr_user_info);
+                    }
+                    times_run += 1;
+                    curr_user_info = strtok(NULL, " ");
+                }
+
+            }
+        }
+
+        //copy new line into existing bank->users variable
+        strcpy(bank->users[found_index], updated_user);
+
+        // sprintf(sendline, "Withdraw success");
+        // bank_send(bank, sendline, strlen(sendline));
+        // printf("Received the following:\n");
+        // fputs(command, stdout);
+
+        return;
+    } 
+
 
     
     /*

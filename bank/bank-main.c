@@ -70,6 +70,7 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(0, &fds))
         {
+            printf("Local command\n");
             fgets(sendline, 10000, stdin);
             bank_process_local_command(bank, sendline, strlen(sendline));
             printf("%s", prompt);

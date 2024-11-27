@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <limits.h>
+
+static const int MAX_ATTEMPTS = 3;
 
 ATM *atm_create()
 {
@@ -60,6 +63,10 @@ ssize_t atm_recv(ATM *atm, char *data, size_t max_data_len)
 
 int check_input(char *username)
 {
+    // check for exactly one argument
+    if (strtok(NULL, " ") != NULL) {
+        return 0;
+    }
 
     if (username == NULL)
     {
@@ -74,8 +81,6 @@ int check_input(char *username)
     }
 
     len = strlen(username);
-
-    // printf("%zd", len);
 
     // check that username only contains letters
     if (len == 0)
@@ -113,6 +118,47 @@ int check_pin(FILE *card, char *pin)
     return 1;
 }
 
+// Function to find or create a login attempt entry
+LoginAttempt* add_login_attempt(ATM *atm, const char *username) {
+    LoginAttempt *current = atm->attempts_list_head;
+
+    // Search for the username in the list
+    while (current != NULL) {
+        if (strcmp(current->username, username) == 0) {
+            current->attempts++; 
+            // printf("%s's attempts: %d\n", username, current->attempts);
+            return current;
+        }
+        current = current->next;
+    }
+
+    // Not found, create a new user and add to front of list
+    LoginAttempt *new_user = malloc(sizeof(LoginAttempt));
+    if (!new_user) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
+    strncpy(new_user->username, username, sizeof(new_user->username) - 1);
+    new_user->username[sizeof(new_user->username) - 1] = '\0';
+    new_user->attempts = 1;
+    new_user->next = atm->attempts_list_head;
+    atm->attempts_list_head = new_user;
+
+    printf("Added new user\n");
+    return new_user;
+}
+
+// Free the login attempts list
+void free_login_attempts(ATM *atm) {
+    LoginAttempt *current = atm->attempts_list_head;
+    while (current != NULL) {
+        LoginAttempt *tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    atm->attempts_list_head = NULL;
+}
+
 void atm_process_command(ATM *atm, char *command)
 {
     if (strstr(command, "begin-session"))
@@ -139,10 +185,15 @@ void atm_process_command(ATM *atm, char *command)
         strcpy(card_file, username);
         strcat(card_file, ".card");
 
+        if (access(card_file, F_OK) != 0) {
+            printf("No such user\n");
+            return;
+        }
+
         FILE *card = fopen(card_file, "r");
         if (card == NULL)
         {
-            printf("No such user\n");
+            printf("Unable to access %s's card\n", username);
             return;
         }
 
@@ -150,6 +201,11 @@ void atm_process_command(ATM *atm, char *command)
         char user_input[1000];
         printf("PIN? ");
         char *pin = fgets(user_input, 1000, stdin);
+
+        if (add_login_attempt(atm, username)->attempts > MAX_ATTEMPTS) {
+            printf("Too many attempts. %s's card file has been locked.\n", username);
+            return;
+        }
 
         if (!check_pin(card, pin))
         {
@@ -161,9 +217,9 @@ void atm_process_command(ATM *atm, char *command)
 
         // set state of ATM
         atm->is_logged_in = 1;
-        atm->curr_user = username;
+        atm->curr_user = strdup(username);
     }
-    else if (strstr(command, "withdraw"))
+    else if (strstr(command, "withdraw") || strstr(command, "balance"))
     {
         if (!atm->is_logged_in)
         {
@@ -174,19 +230,14 @@ void atm_process_command(ATM *atm, char *command)
         // handle withdraw inside bank file
         char recvline[10000];
         int n;
+        char sendline[10000];
+        snprintf(sendline, sizeof(sendline), "(%s)%s", atm->curr_user, command);
+        // printf("Resulting string: %s\n", sendline);
 
-        atm_send(atm, command, strlen(command));
+        atm_send(atm, sendline, strlen(sendline));
         n = atm_recv(atm, recvline, 10000);
         recvline[n] = 0;
         fputs(recvline, stdout);
-    }
-    else if (strstr(command, "balance"))
-    {
-        if (!atm->is_logged_in)
-        {
-            printf("No user logged in\n");
-            return;
-        }
     }
     else if (strstr(command, "end-session"))
     {
@@ -197,6 +248,7 @@ void atm_process_command(ATM *atm, char *command)
         }
         atm->is_logged_in = 0;
         atm->curr_user = NULL;
+        free_login_attempts(atm);
         printf("User logged out\n");
         return;
     }
