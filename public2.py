@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 from __future__ import print_function
 import pexpect
@@ -153,5 +153,5 @@ def test_create_user(init_path):
     bank.close()
     cleanup()
        
-test_init(proj_path)
-#test_create_user(proj_path)
+# test_init(proj_path)
+test_create_user(proj_path)

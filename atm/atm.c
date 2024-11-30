@@ -61,14 +61,28 @@ ssize_t atm_recv(ATM *atm, char *data, size_t max_data_len)
     return recvfrom(atm->sockfd, data, max_data_len, 0, NULL, NULL);
 }
 
-int check_input(char *username)
+int valid_username(char *username)
 {
-    // check for exactly one argument
-    if (strtok(NULL, " ") != NULL) {
+    if (strlen(username) > 250)
+    {
         return 0;
     }
 
-    if (username == NULL)
+    int i = 0;
+    while (username[i] != '\0')
+    {
+        if (!isalpha(username[i++]))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int check_input(char *username)
+{
+    // check for exactly one argument
+    if (strtok(NULL, " ") != NULL || username == NULL)
     {
         return 0;
     }
@@ -80,23 +94,7 @@ int check_input(char *username)
         username[len - 1] = '\0';
     }
 
-    len = strlen(username);
-
-    // check that username only contains letters
-    if (len == 0)
-    {
-        return 0;
-    }
-
-    for (size_t i = 0; i < len; i++)
-    {
-        if (isalpha(username[i]) == 0)
-        {
-            return 0;
-        }
-    }
-
-    return 1;
+    return valid_username(username);
 }
 
 int check_pin(FILE *card, char *pin)
@@ -118,45 +116,38 @@ int check_pin(FILE *card, char *pin)
     return 1;
 }
 
-// Function to find or create a login attempt entry
-LoginAttempt* add_login_attempt(ATM *atm, const char *username) {
+LoginAttempt *get_login(ATM *atm, char *username)
+{
     LoginAttempt *current = atm->attempts_list_head;
 
     // Search for the username in the list
-    while (current != NULL) {
-        if (strcmp(current->username, username) == 0) {
-            current->attempts++; 
-            // printf("%s's attempts: %d\n", username, current->attempts);
+    while (current != NULL)
+    {
+        if (strcmp(current->username, username) == 0)
+        {
             return current;
         }
         current = current->next;
     }
+    return NULL;
+}
 
+LoginAttempt *add_new(ATM *atm, char *username)
+{
     // Not found, create a new user and add to front of list
     LoginAttempt *new_user = malloc(sizeof(LoginAttempt));
-    if (!new_user) {
+    if (!new_user)
+    {
         perror("malloc failed");
         exit(EXIT_FAILURE);
     }
     strncpy(new_user->username, username, sizeof(new_user->username) - 1);
     new_user->username[sizeof(new_user->username) - 1] = '\0';
-    new_user->attempts = 1;
+    new_user->attempts = 0;
     new_user->next = atm->attempts_list_head;
     atm->attempts_list_head = new_user;
 
-    printf("Added new user\n");
     return new_user;
-}
-
-// Free the login attempts list
-void free_login_attempts(ATM *atm) {
-    LoginAttempt *current = atm->attempts_list_head;
-    while (current != NULL) {
-        LoginAttempt *tmp = current;
-        current = current->next;
-        free(tmp);
-    }
-    atm->attempts_list_head = NULL;
 }
 
 void atm_process_command(ATM *atm, char *command)
@@ -170,10 +161,10 @@ void atm_process_command(ATM *atm, char *command)
         }
 
         // read in username
-        strtok(command, " ");
+        char *begin_session = strtok(command, " ");
         char *username = strtok(NULL, " ");
 
-        if (check_input(username) == 0)
+        if (strcmp(begin_session, "begin-session") || !check_input(username))
         {
             printf("Usage: begin-session <user-name>\n");
             return;
@@ -185,7 +176,8 @@ void atm_process_command(ATM *atm, char *command)
         strcpy(card_file, username);
         strcat(card_file, ".card");
 
-        if (access(card_file, F_OK) != 0) {
+        if (access(card_file, F_OK) != 0)
+        {
             printf("No such user\n");
             return;
         }
@@ -193,6 +185,7 @@ void atm_process_command(ATM *atm, char *command)
         FILE *card = fopen(card_file, "r");
         if (card == NULL)
         {
+            fclose(card);
             printf("Unable to access %s's card\n", username);
             return;
         }
@@ -202,7 +195,14 @@ void atm_process_command(ATM *atm, char *command)
         printf("PIN? ");
         char *pin = fgets(user_input, 1000, stdin);
 
-        if (add_login_attempt(atm, username)->attempts > MAX_ATTEMPTS) {
+        if (!get_login(atm, username)) {
+            add_new(atm, username);
+        }
+        LoginAttempt *curr = get_login(atm, username);
+        curr->attempts++;
+
+        if (curr->attempts > MAX_ATTEMPTS)
+        {
             printf("Too many attempts. %s's card file has been locked.\n", username);
             return;
         }
@@ -218,6 +218,7 @@ void atm_process_command(ATM *atm, char *command)
         // set state of ATM
         atm->is_logged_in = 1;
         atm->curr_user = strdup(username);
+        fclose(card);
     }
     else if (strstr(command, "withdraw") || strstr(command, "balance"))
     {
@@ -227,28 +228,29 @@ void atm_process_command(ATM *atm, char *command)
             return;
         }
 
-        // handle withdraw inside bank file
+        // handle command inside bank file
         char recvline[10000];
         int n;
         char sendline[10000];
-        snprintf(sendline, sizeof(sendline), "(%s)%s", atm->curr_user, command);
-        // printf("Resulting string: %s\n", sendline);
 
+        snprintf(sendline, sizeof(sendline), "%s %s", atm->curr_user, command);
         atm_send(atm, sendline, strlen(sendline));
         n = atm_recv(atm, recvline, 10000);
         recvline[n] = 0;
         fputs(recvline, stdout);
     }
-    else if (strstr(command, "end-session"))
+    else if (strstr(command, "end-session\n"))
     {
         if (!atm->is_logged_in)
         {
             printf("No user logged in\n");
             return;
         }
+
+        // reset attempts to 0
+        get_login(atm, atm->curr_user)->attempts = 0;
         atm->is_logged_in = 0;
         atm->curr_user = NULL;
-        free_login_attempts(atm);
         printf("User logged out\n");
         return;
     }

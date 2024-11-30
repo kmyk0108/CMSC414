@@ -107,6 +107,6 @@ int main(int argc, char *argv[])
     free(string);
     free(path_copy);
 
-
+    printf("Successfully initialized bank state\n");
     return SUCCESS;
 }

@@ -20,6 +20,19 @@
 
 static const char prompt[] = "BANK: ";
 
+// Free the login attempts list
+void free_users(Bank *bank)
+{
+    User *current = bank->user_list_head;
+    while (current != NULL)
+    {
+        User *tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    bank->user_list_head = NULL;
+}
+
 int main(int argc, char **argv)
 {
     int n;
@@ -70,7 +83,6 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(0, &fds))
         {
-            printf("Local command\n");
             fgets(sendline, 10000, stdin);
             bank_process_local_command(bank, sendline, strlen(sendline));
             printf("%s", prompt);
@@ -83,5 +95,6 @@ int main(int argc, char **argv)
         }
     }
 
+    free_users(bank);
     return EXIT_SUCCESS;
 }

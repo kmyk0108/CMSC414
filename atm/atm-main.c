@@ -13,6 +13,19 @@
 
 static const char prompt[] = "ATM: ";
 
+// Free the login attempts list
+void free_login_attempts(ATM *atm)
+{
+    LoginAttempt *current = atm->attempts_list_head;
+    while (current != NULL)
+    {
+        LoginAttempt *tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    atm->attempts_list_head = NULL;
+}
+
 int main(int argc, char **argv)
 {
     char user_input[10000];
@@ -52,5 +65,6 @@ int main(int argc, char **argv)
         }
         fflush(stdout);
     }
+    free_login_attempts(atm);
 	return EXIT_SUCCESS;
 }
