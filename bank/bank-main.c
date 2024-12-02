@@ -83,7 +83,7 @@ int main(int argc, char **argv)
         }
     }
 
-    list_free(bank->users);
+    
     bank_free(bank);
     
     return EXIT_SUCCESS;

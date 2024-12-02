@@ -47,16 +47,31 @@ Bank *bank_create(char *bank_file)
 
     // Set up the protocol state
     bank->bank_file = bank_file;
-    bank->users = list_create(10);
+    // bank->users = list_create(20);
 
     return bank;
 }
+
+// Free the login attempts list
+void free_users(Bank *bank)
+{
+    User *current = bank->user_list_head;
+    while (current != NULL)
+    {
+        User *tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    bank->user_list_head = NULL;
+}
+
 
 void bank_free(Bank *bank)
 {
     if (bank != NULL)
     {
         close(bank->sockfd);
+        free_users(bank);
         free(bank);
     }
 }
@@ -73,6 +88,40 @@ ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len)
     // Returns the number of bytes received; negative on error
     return recvfrom(bank->sockfd, data, max_data_len, 0, NULL, NULL);
 }
+
+User *get_user(Bank *bank, char *username)
+{
+    User *current = bank->user_list_head;
+
+    while (current != NULL)
+    {
+        if (strcmp(current->username, username) == 0)
+        {
+            return current;
+        }
+        current = current->next;
+    }
+
+    return NULL;
+}
+
+void create_user(Bank *bank, char *username, char *balance)
+{
+    // Add new user to head of list
+    User *new_user = malloc(sizeof(User));
+    if (!new_user)
+    {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
+    strncpy(new_user->username, username, sizeof(new_user->username) - 1);
+    new_user->username[sizeof(new_user->username) - 1] = '\0';
+    new_user->balance = atoi(balance);
+    new_user->next = bank->user_list_head;
+    bank->user_list_head = new_user;
+    return;
+}
+
 
 int extract_pin_key(char *bank_file, unsigned char *key)
 {
@@ -307,23 +356,45 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        if (list_find(bank->users, username) != NULL)
+        // char user[251] = {'\0'};
+        // char pin[5] = {'\0'};
+        // char balance[11] = {'\0'};
+        // // char amt[11] = {'\0'};
+
+        // strncpy(user, username, (sizeof(user)-1));
+        // strncpy(pin, pin_str, (sizeof(pin)-1));
+        // strncpy(balance, init_balance, (sizeof(balance)-1));
+
+        // if (list_find(bank->users, user) != NULL)
+        // {
+        //     printf("Error: user %s already exists\n", username);
+        //     return;
+        // }
+
+        if (get_user(bank, username) != NULL)
         {
             printf("Error: user %s already exists\n", username);
             return;
         }
 
+        create_user(bank, username, init_balance);
+
         int balance_int = atoi(init_balance);
         int user_len = strlen(username);
 
-        // add the new user to the users list
-        char *bal_str = calloc(MAX_INT_BYTES, 1);
-        char *usr_str = calloc(user_len + 1, 1);
-        sprintf(bal_str, "%d", balance_int); // conversion to string for list
-        strncpy(usr_str, username, user_len);
-        list_add(bank->users, usr_str, bal_str);
-        usr_str = NULL;
-        bal_str = NULL;
+        // list_add(bank->users, username, &balance_int);
+
+        // Add the new user to the users list
+        // char *bal_str;
+        // char *usr_str;
+        // bal_str = calloc(MAX_INT_BYTES, 1);
+        // usr_str = calloc(user_len + 1, 1);
+        // sprintf(bal_str, "%d", balance_int); // conversion to string for list
+        // strncpy(usr_str, user, user_len);
+        // list_add(bank->users, usr_str, bal_str); // Passing the dynamically allocated strings
+        // usr_str = NULL;
+        // bal_str = NULL;
+
         // list_add(bank->users, username, (void *)(intptr_t)init_balance);
 
         create_card(bank, username, (unsigned char *)pin);
@@ -365,34 +436,43 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        char *balance = list_find(bank->users, username);
-        if (balance == NULL)
+        // char *balance = list_find(bank->users, username);
+        // if (balance == NULL)
+        // {
+        //     printf("No such user\n");
+        //     return;
+        // }
+
+        User *user = get_user(bank, username);
+        if (user == NULL)
         {
             printf("No such user\n");
             return;
         }
 
         // since we previously checked that amount is a valid integer, convert it to one
-        int balance_int = atoi(balance);
+        int balance = user->balance;
         int deposit_amt = atoi(amount);
 
         // check that deposit doesn't cause integer overflow
-        if (balance_int > INT_MAX - deposit_amt || deposit_amt > INT_MAX - balance_int)
+        if (balance > INT_MAX - deposit_amt || deposit_amt > INT_MAX - balance)
         {
             printf("Too rich for this program\n");
             return;
         }
 
-        char *amt_str = calloc(MAX_INT_BYTES, 1);
-        char *username_for_list;
-        sprintf(amt_str, "%d", balance_int + deposit_amt);
+        user->balance += deposit_amt;
 
-        list_del(bank->users, username);
+        // char *amt_str = calloc(MAX_INT_BYTES, 1);
+        // char *username_for_list;
+        // sprintf(amt_str, "%d", balance_int + deposit_amt);
 
-        username_for_list = calloc(MAX_USERNAME_LEN + 1, 1);
-        strncpy(username_for_list, username, strlen(username));
+        // list_del(bank->users, username);
 
-        list_add(bank->users, username_for_list, amt_str);
+        // username_for_list = calloc(MAX_USERNAME_LEN + 1, 1);
+        // strncpy(username_for_list, username, strlen(username));
+
+        // list_add(bank->users, username_for_list, amt_str);
         printf("$%d added to %s's account\n", deposit_amt, username);
         return;
     }
@@ -432,13 +512,20 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        char *balance = list_find(bank->users, username);
-        if (balance == NULL)
+        User *user = get_user(bank, username);
+        if (user == NULL)
         {
             printf("No such user\n");
             return;
         }
-        printf("$%s\n", (char *)balance);
+
+        // char *balance = list_find(bank->users, username);
+        // if (balance == NULL)
+        // {
+        //     printf("No such user\n");
+        //     return;
+        // }
+        printf("$%d\n", user->balance);
         return;
     }
 
@@ -453,8 +540,6 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
 void bank_process_remote_command(Bank *bank, char *command, size_t len)
 {
     char sendline[10000];
-
-    
 
     // bank_send(bank, sendline, strlen(sendline));
     return;

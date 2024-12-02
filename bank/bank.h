@@ -23,6 +23,13 @@
 #include "util/list.h"
 
 
+typedef struct User {
+    char username[251];
+    int balance;
+    struct User *next;
+} User;
+
+
 typedef struct _Bank
 {
     // Networking state
@@ -33,7 +40,8 @@ typedef struct _Bank
 
     // Protocol state
     char * bank_file;
-    List * users;
+    User * user_list_head;
+    // List * users;
 
 } Bank;
 
