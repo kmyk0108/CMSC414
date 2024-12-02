@@ -37,7 +37,7 @@ typedef struct _ATM
     int is_logged_in;
 
     // Track login attempts
-    LoginAttempt *attempts_list_head; // Head of the linked list for login attempts
+    LoginAttempt *attempts_list_head; 
 } ATM;
 
 ATM* atm_create();

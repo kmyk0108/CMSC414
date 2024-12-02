@@ -12,8 +12,8 @@
 #define ERROR_FILE_CREATION 64
 #define SUCCESS 0
 
-#define AES_KEY_SIZE 32 // 256-bit key
-
+// argv[0]: <path1>/init 
+// argv[1]: <path2>/<init-fname>
 int main(int argc, char *argv[])
 {
     // Ensure that exactly one argument is provided
@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
         return ERROR_USAGE;
     }
 
+    // Create the directories specified in <path2> if they don't exist
     char *path_copy = malloc(strlen(argv[1]) + 1);
     strcpy(path_copy, argv[1]);
     char *token = strtok(path_copy, "/");
@@ -48,10 +49,10 @@ int main(int argc, char *argv[])
         free(string_copy);
     }
 
+    // Create the <init-fname>.bank and <init-fname>.atm files
     char bank_file[1024];
     char atm_file[1024];
 
-    // Construct the file paths
     snprintf(bank_file, sizeof(bank_file), "%s.bank", argv[1]);
     snprintf(atm_file, sizeof(atm_file), "%s.atm", argv[1]);
 
@@ -74,7 +75,6 @@ int main(int argc, char *argv[])
         return ERROR_FILE_EXISTS;
     }
 
-    // Open .bank file
     FILE *bank_fp = fopen(bank_file, "wb");
     if (!bank_fp)
     {
@@ -82,7 +82,6 @@ int main(int argc, char *argv[])
         return ERROR_FILE_CREATION;
     }
 
-    // Open .atm file
     FILE *atm_fp = fopen(atm_file, "wb");
     if (!atm_fp)
     {
@@ -123,11 +122,9 @@ int main(int argc, char *argv[])
         return ERROR_FILE_CREATION;
     }
 
-    // Zero out keys
     memset(aes_pin_key, 0, AES_KEY_SIZE);
     memset(aes_message_key, 0, AES_KEY_SIZE);
 
-    // Close files
     fclose(bank_fp);
     fclose(atm_fp);
 

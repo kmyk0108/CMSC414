@@ -8,7 +8,7 @@
 #include <limits.h>
 #include <signal.h>
 
-#define MAX_ATTEMPTS 3
+#define MAX_ATTEMPTS 5
 #define MAX_USERNAME_LEN 250
 
 ATM *atm_create(char *atm_file)
@@ -43,11 +43,25 @@ ATM *atm_create(char *atm_file)
     return atm;
 }
 
+// Free the login attempts list
+void free_login_attempts(ATM *atm)
+{
+    LoginAttempt *current = atm->attempts_list_head;
+    while (current != NULL)
+    {
+        LoginAttempt *tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    atm->attempts_list_head = NULL;
+}
+
 void atm_free(ATM *atm)
 {
     if (atm != NULL)
     {
         close(atm->sockfd);
+        free_login_attempts(atm);
         free(atm);
     }
 }
@@ -65,6 +79,8 @@ ssize_t atm_recv(ATM *atm, char *data, size_t max_data_len)
     return recvfrom(atm->sockfd, data, max_data_len, 0, NULL, NULL);
 }
 
+// Functions to extract the AES key used to encrypt pins (first 32 bytes of .bank and .atm)
+//                  and the AES key used to encrypt messages (last 32 bytes of .bank and .atm)
 int extract_pin_key(char *atm_file, unsigned char *key)
 {
     // Ensure that exactly one argument is provided
@@ -113,28 +129,29 @@ int extract_msg_key(char *atm_file, unsigned char *key)
     return 0;
 }
 
+// Read in the encrypted pin and IV from <username>.card
 int card_contents(char *card, char *username, unsigned char *pin, unsigned char *iv)
 {
     // Ensure that exactly one argument is provided
-    FILE *atm_fd = fopen(card, "rb");
-    if (atm_fd == NULL)
+    FILE *card_fd = fopen(card, "rb");
+    if (card_fd == NULL)
     {
         printf("Unable to access %s's card\n", username);
         return 1;
     }
-    if (fread(pin, 1, AES_BLOCK_SIZE, atm_fd) != AES_BLOCK_SIZE)
+    if (fread(pin, 1, AES_BLOCK_SIZE, card_fd) != AES_BLOCK_SIZE)
     {
         perror("Error reading file");
-        fclose(atm_fd);
+        fclose(card_fd);
         return 1;
     }
-    if (fread(iv, 1, IV_SIZE, atm_fd) != IV_SIZE)
+    if (fread(iv, 1, IV_SIZE, card_fd) != IV_SIZE)
     {
         perror("Error reading file");
-        fclose(atm_fd);
+        fclose(card_fd);
         return 1;
     }
-    fclose(atm_fd);
+    fclose(card_fd);
     return 0;
 }
 
@@ -192,6 +209,7 @@ int check_input(char *username)
     return valid_username(username);
 }
 
+// Compare the encryption of the user-entered plaintext pin to the stored encrypted pin in their card file
 int check_pin(char *atm_file, char *card_file, char *username, char *plaintext_pin)
 {
     // extract the pin key from .atm
@@ -207,7 +225,6 @@ int check_pin(char *atm_file, char *card_file, char *username, char *plaintext_p
     unsigned char iv[IV_SIZE];
     if (card_contents(card_file, username, stored_pin, iv) != 0)
     {
-        // printf("Error extracting card contents\n");
         return 1;
     }
 
@@ -227,6 +244,7 @@ int check_pin(char *atm_file, char *card_file, char *username, char *plaintext_p
     }
 }
 
+// functions for the list storing usernames and number of login attempts
 LoginAttempt *get_login(ATM *atm, char *username)
 {
     LoginAttempt *current = atm->attempts_list_head;
@@ -261,6 +279,8 @@ LoginAttempt *add_new(ATM *atm, char *username)
     return new_user;
 }
 
+// Create the entire message to send to the bank, consisting of the encrypted command, the initialization vector,
+// and the tag.
 unsigned char *encrypt_message(ATM *atm, unsigned char *plaintext, size_t *sendline_len)
 {
     unsigned char msg_key[AES_KEY_SIZE];
@@ -274,16 +294,10 @@ unsigned char *encrypt_message(ATM *atm, unsigned char *plaintext, size_t *sendl
     unsigned char tag[TAG_SIZE];
 
     int c_len = gcm_encrypt(plaintext, strlen((char *)plaintext), NULL, 0, msg_key, iv, GCM_IV_SIZE, ciphertext, tag);
-    // printf("Ciphertext: %s\n", ciphertext);   // Debugging
-    // printf("Ciphertext length: %d\n", c_len); // Debugging
-
-    // Prepare the lengths
     int length_ciphertext = c_len;
 
-    // Calculate total sendline length
     *sendline_len = sizeof(int) + length_ciphertext + GCM_IV_SIZE + TAG_SIZE;
 
-    // Allocate buffer for sending the message to the bank
     unsigned char *sendline = malloc(*sendline_len);
 
     if (sendline == NULL)
@@ -292,7 +306,7 @@ unsigned char *encrypt_message(ATM *atm, unsigned char *plaintext, size_t *sendl
         exit(EXIT_FAILURE);
     }
 
-    // Pack the message into sendline
+    // Write the message into sendline
     int offset = 0;
     memcpy(sendline + offset, &length_ciphertext, sizeof(int)); // Length of ciphertext
     offset += sizeof(int);
@@ -303,11 +317,29 @@ unsigned char *encrypt_message(ATM *atm, unsigned char *plaintext, size_t *sendl
     memcpy(sendline + offset, iv, GCM_IV_SIZE); // IV
     offset += GCM_IV_SIZE;
 
-    memcpy(sendline + offset, tag, TAG_SIZE); // Tag
 
-    return sendline; // Return the pointer to sendline
+    /*
+        If the tag is not the same as the one created by gcm_encrypt(), then sending it over
+        would terminate the bank program as it is seen as malicious.
+
+        Example: generating a tag using generate_rand_bytes() instead of gcm_encrypt()
+
+            unsigned char badtag[TAG_SIZE];
+            generate_rand_bytes(TAG_SIZE, badtag);
+            memcpy(sendline + offset, badtag, TAG_SIZE);
+        
+        Results in bank program terminating because tag is not recognized by gcm_decrypt().
+    */
+    
+    memcpy(sendline + offset, tag, TAG_SIZE); 
+
+    return sendline; 
 }
 
+/* 
+    Decrypt an AES-256-GCM encoded message sent to the atm. If the extracted authentication tag differs from that
+    created by gcm_encrypt(), the program will terminate.
+*/
 int decrypt_message(ATM *atm, char *command, size_t len, char *plaintext_buffer, size_t buffer_size)
 {
     char received_data[10000];
@@ -356,13 +388,13 @@ int decrypt_message(ATM *atm, char *command, size_t len, char *plaintext_buffer,
     return p_len; // Return the length of the decrypted plaintext
 }
 
+// Send the begin-session command formatted like "begin-session <username>" to the bank so the bank can directly check its in-memory users list to see
+// if the user exists. Print the bank's response.
 int begin_session(ATM *atm, char *username, char *recvline)
 {
-    // Create the plaintext
     unsigned char plaintext[MAX_USERNAME_LEN + strlen("begin-session ") + 1];
     snprintf((char *)plaintext, sizeof(plaintext), "begin-session %s", username);
 
-    // Sendline length (will be set by encrypt_message)
     size_t sendline_len = 0;
 
     unsigned char *sendline = encrypt_message(atm, plaintext, &sendline_len);
@@ -384,9 +416,11 @@ int begin_session(ATM *atm, char *username, char *recvline)
         return 1;
     }
 
-    return 0; // Success
+    return 0; 
 }
 
+// Send the withdraw command to the bank formatted like "withdraw <username> <amount>".
+// Print the bank's response.
 int withdraw(ATM *atm, char *username, char *amount, char *recvline)
 {
     unsigned char plaintext[MAX_USERNAME_LEN + strlen("withdraw") + strlen(amount) + 3];
@@ -418,12 +452,13 @@ int withdraw(ATM *atm, char *username, char *amount, char *recvline)
     return 0; // Success
 }
 
+// Send the withdraw command to the bank formatted like "balance <username>".
+// Print the bank's response.
 int balance(ATM *atm, char *username, char *recvline)
 {
     unsigned char plaintext[MAX_USERNAME_LEN + strlen("balance ") + 1];
     snprintf((char *)plaintext, sizeof(plaintext), "balance %s", username);
 
-    // Sendline length (will be set by encrypt_message)
     size_t sendline_len = 0;
 
     unsigned char *sendline = encrypt_message(atm, plaintext, &sendline_len);
@@ -441,7 +476,7 @@ int balance(ATM *atm, char *username, char *recvline)
 
     printf("%s\n", plaintext_buf);
 
-    return 0; // Success
+    return 0; 
 }
 
 void atm_process_command(ATM *atm, char *command)
@@ -521,7 +556,7 @@ void atm_process_command(ATM *atm, char *command)
             size_t len = strlen(pin);
             if (len > 0 && pin[len - 1] == '\n')
             {
-                pin[len - 1] = '\0'; // Replace newline with null terminator
+                pin[len - 1] = '\0'; 
             }
         }
 
@@ -530,6 +565,8 @@ void atm_process_command(ATM *atm, char *command)
             add_new(atm, username);
         }
 
+        // if a user has attempted to log in more than MAX_ATTEMPTS times, then lock
+        // them out of their account for the rest of the session. 
         LoginAttempt *curr = get_login(atm, username);
 
         if (curr->attempts > MAX_ATTEMPTS)
@@ -638,7 +675,7 @@ void atm_process_command(ATM *atm, char *command)
             return;
         }
 
-        // reset attempts to 0
+        // reset login attempts to 0
         get_login(atm, atm->curr_user)->attempts = 0;
         atm->is_logged_in = 0;
         atm->curr_user = NULL;
@@ -650,19 +687,4 @@ void atm_process_command(ATM *atm, char *command)
         printf("Invalid command\n");
         return;
     }
-    /*
-     * The following is a toy example that simply sends the
-     * user's command to the bank, receives a message from the
-     * bank, and then prints it to stdout.
-     */
-
-    /*
-    char recvline[10000];
-    int n;
-
-    atm_send(atm, command, strlen(command));
-    n = atm_recv(atm,recvline,10000);
-    recvline[n]=0;
-    fputs(recvline,stdout);
-    */
 }

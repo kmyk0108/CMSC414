@@ -22,7 +22,7 @@
 #include "util/hash_table.h"
 #include "util/list.h"
 
-
+// Store the username and current balance of each user
 typedef struct User {
     char username[251];
     int balance;
@@ -40,6 +40,8 @@ typedef struct _Bank
 
     // Protocol state
     char * bank_file;
+
+    // Maintain a list of users
     User * user_list_head;
 
 } Bank;

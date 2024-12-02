@@ -43,7 +43,6 @@ Bank *bank_create(char *bank_file)
     // Set up the protocol state
     bank->bank_file = bank_file;
     bank->user_list_head = NULL;
-    // bank->users = list_create(20);
 
     return bank;
 }
@@ -84,6 +83,7 @@ ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len)
     return recvfrom(bank->sockfd, data, max_data_len, 0, NULL, NULL);
 }
 
+// bank->users functions
 User *get_user(Bank *bank, char *username)
 {
     User *current = bank->user_list_head;
@@ -117,6 +117,8 @@ void create_user(Bank *bank, char *username, char *balance)
     return;
 }
 
+// Functions to extract the AES key used to encrypt pins (first 32 bytes of .bank and .atm)
+//                  and the AES key used to encrypt messages (last 32 bytes of .bank and .atm)
 int extract_pin_key(char *bank_file, unsigned char *key)
 {
     // Ensure that exactly one argument is provided
@@ -165,6 +167,7 @@ int extract_msg_key(char *bank_file, unsigned char *key)
     return 0;
 }
 
+// Checks to validate usernames, pins, amounts
 int valid_username(char *username)
 {
     if (strlen(username) > MAX_USERNAME_LEN || strlen(username) == 0)
@@ -215,23 +218,21 @@ int check_create_user(char *command, char *username, char *pin, char *init_balan
     return strcmp(command, "create-user") == 0 && valid_username(username) && valid_pin(pin) && valid_balance(init_balance);
 }
 
+// Create a <username>.card file for the user containing their encrypted pin and initialization vector
 void create_card(Bank *bank, char *username, unsigned char *plaintext_pin)
 {
-    // try to create a .card file for the user
     size_t card_file_size = strlen(username) + strlen(".card") + 1;
     char *card_file = (char *)malloc(card_file_size);
 
     if (card_file == NULL)
     {
         fprintf(stderr, "Error: Memory allocation failed.\n");
-        return; // Handle memory allocation failure
+        return; 
     }
 
-    // Safely copy the username into the buffer
     strncpy(card_file, username, card_file_size - 1);
-    card_file[card_file_size - 1] = '\0'; // Ensure null termination
+    card_file[card_file_size - 1] = '\0'; 
 
-    // Safely append ".card" to the username
     strncat(card_file, ".card", card_file_size - strlen(card_file) - 1);
 
     FILE *file = fopen(card_file, "wb");
@@ -248,10 +249,10 @@ void create_card(Bank *bank, char *username, unsigned char *plaintext_pin)
         unsigned char iv[IV_SIZE];
         generate_rand_bytes(IV_SIZE, iv);
 
-        // int block_size = calculate_block_size(strlen((char *)plaintext_pin));
-
+        // since each pin is 4 bytes, it will only need one block = 16 bytes (12 bytes padded).
         unsigned char encrypted_pin[AES_BLOCK_SIZE];
 
+        // encrypt the pin in AES-256-CBC mode
         encrypt(plaintext_pin, strlen((char *)plaintext_pin), pin_key, iv, encrypted_pin);
 
         // write the encrypted pin and IV into .card file
@@ -298,7 +299,7 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
     strncpy(command_copy, command, sizeof(command_copy) - 1);
     command_copy[sizeof(command_copy) - 1] = '\0';
 
-    // remove \n at end of command
+    // remove newline at end of command
     command_copy[strlen(command_copy) - 1] = '\0';
 
     if (strstr(command, "create-user"))
@@ -339,27 +340,13 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        // char user[251] = {'\0'};
-        // char pin[5] = {'\0'};
-        // char balance[11] = {'\0'};
-        // // char amt[11] = {'\0'};
-
-        // strncpy(user, username, (sizeof(user)-1));
-        // strncpy(pin, pin_str, (sizeof(pin)-1));
-        // strncpy(balance, init_balance, (sizeof(balance)-1));
-
-        // if (list_find(bank->users, user) != NULL)
-        // {
-        //     printf("Error: user %s already exists\n", username);
-        //     return;
-        // }
-
         if (get_user(bank, username) != NULL)
         {
             printf("Error: user %s already exists\n", username);
             return;
         }
 
+        // add the user to the users list and create <username>.card
         create_user(bank, username, init_balance);
         create_card(bank, username, (unsigned char *)pin);
 
@@ -401,13 +388,6 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        // char *balance = list_find(bank->users, username);
-        // if (balance == NULL)
-        // {
-        //     printf("No such user\n");
-        //     return;
-        // }
-
         User *user = get_user(bank, username);
         if (user == NULL)
         {
@@ -426,18 +406,9 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
+        // deposit the money
         user->balance += deposit_amt;
 
-        // char *amt_str = calloc(MAX_INT_BYTES, 1);
-        // char *username_for_list;
-        // sprintf(amt_str, "%d", balance_int + deposit_amt);
-
-        // list_del(bank->users, username);
-
-        // username_for_list = calloc(MAX_USERNAME_LEN + 1, 1);
-        // strncpy(username_for_list, username, strlen(username));
-
-        // list_add(bank->users, username_for_list, amt_str);
         printf("$%d added to %s's account\n", deposit_amt, username);
         return;
     }
@@ -484,12 +455,6 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
             return;
         }
 
-        // char *balance = list_find(bank->users, username);
-        // if (balance == NULL)
-        // {
-        //     printf("No such user\n");
-        //     return;
-        // }
         printf("$%d\n", user->balance);
         return;
     }
@@ -502,6 +467,8 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
     return;
 }
 
+// Create the entire message to send to the ATM, consisting of the encrypted command, the initialization vector,
+// and the tag.
 unsigned char *encrypt_message(Bank *bank, unsigned char *plaintext, size_t *sendline_len)
 {
     unsigned char msg_key[AES_KEY_SIZE];
@@ -515,13 +482,8 @@ unsigned char *encrypt_message(Bank *bank, unsigned char *plaintext, size_t *sen
     unsigned char tag[TAG_SIZE];
 
     int c_len = gcm_encrypt(plaintext, strlen((char *)plaintext), NULL, 0, msg_key, iv, GCM_IV_SIZE, ciphertext, tag);
-    // printf("Ciphertext: %s\n", ciphertext);   // Debugging
-    // printf("Ciphertext length: %d\n", c_len); // Debugging
-
-    // Prepare the lengths
     int length_ciphertext = c_len;
 
-    // Calculate total sendline length
     *sendline_len = sizeof(int) + length_ciphertext + GCM_IV_SIZE + TAG_SIZE;
 
     // Allocate buffer for sending the message to the bank
@@ -533,22 +495,23 @@ unsigned char *encrypt_message(Bank *bank, unsigned char *plaintext, size_t *sen
         exit(EXIT_FAILURE);
     }
 
-    // Pack the message into sendline
+    // Write the message into sendline
     int offset = 0;
-    memcpy(sendline + offset, &length_ciphertext, sizeof(int)); // Length of ciphertext
+    memcpy(sendline + offset, &length_ciphertext, sizeof(int)); // length of ciphertext
     offset += sizeof(int);
 
-    memcpy(sendline + offset, ciphertext, length_ciphertext); // Ciphertext
+    memcpy(sendline + offset, ciphertext, length_ciphertext); // ciphertext
     offset += length_ciphertext;
 
     memcpy(sendline + offset, iv, GCM_IV_SIZE); // IV
     offset += GCM_IV_SIZE;
 
-    memcpy(sendline + offset, tag, TAG_SIZE); // Tag
+    memcpy(sendline + offset, tag, TAG_SIZE); // tag
 
-    return sendline; // Return the pointer to sendline
+    return sendline;
 }
 
+// Process an authenticated command sent by the ATM
 void bank_process_remote_command(Bank *bank, char *command, size_t len)
 {
     size_t sendline_len = 0;
@@ -621,6 +584,7 @@ void bank_process_remote_command(Bank *bank, char *command, size_t len)
             snprintf((char *)response, sizeof(response), "$%d", curr_balance);
         }
     }
+
     unsigned char *sendline = encrypt_message(bank, response, &sendline_len);
     bank_send(bank, (char *)sendline, sendline_len);
     free(sendline);

@@ -13,19 +13,6 @@
 
 static const char prompt[] = "ATM: ";
 
-// Free the login attempts list
-void free_login_attempts(ATM *atm)
-{
-    LoginAttempt *current = atm->attempts_list_head;
-    while (current != NULL)
-    {
-        LoginAttempt *tmp = current;
-        current = current->next;
-        free(tmp);
-    }
-    atm->attempts_list_head = NULL;
-}
-
 int main(int argc, char **argv)
 {
     char user_input[10000];
@@ -58,6 +45,8 @@ int main(int argc, char **argv)
     while (fgets(user_input, 10000,stdin) != NULL)
     {
         atm_process_command(atm, user_input);
+
+        // change the prompt to "ATM (<username>): " if a user is logged in
         if (atm->is_logged_in) {
             printf("ATM (%s): ", atm->curr_user);
         } else {
@@ -65,7 +54,6 @@ int main(int argc, char **argv)
         }
         fflush(stdout);
     }
-    free_login_attempts(atm);
     atm_free(atm);
 	return EXIT_SUCCESS;
 }

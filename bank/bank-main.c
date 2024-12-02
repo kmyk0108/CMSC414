@@ -1,9 +1,3 @@
-/*
- * The main program for the Bank.
- *
- * You are free to change this as necessary.
- */
-
 #include <string.h>
 #include <sys/select.h>
 #include <stdio.h>
@@ -21,6 +15,10 @@
 
 static const char prompt[] = "BANK: ";
 
+/* 
+    Decrypt an AES-256-GCM encoded message sent to the bank. If the extracted authentication tag differs from that
+    created by gcm_encrypt(), the program will terminate.
+*/
 int decrypt_message(Bank *bank, char *command, size_t len, char *plaintext_buffer, size_t buffer_size) {
     char received_data[10000];
     memcpy(received_data, command, len);
@@ -51,20 +49,19 @@ int decrypt_message(Bank *bank, char *command, size_t len, char *plaintext_buffe
 
     // Handle decryption errors
     if (p_len < 0) {
-        printf("Untrustworthy source\n");
-        free(ciphertext);  // Free allocated memory
-        free(iv);  // Free allocated memory
-        free(tag);  // Free allocated memory
-        return -1;  // Return -1 to indicate decryption failure
+        free(ciphertext);  
+        free(iv);  
+        free(tag);  
+        return -1;
     }
 
-    plaintext_buffer[p_len] = '\0';  // Null-terminate the plaintext
+    plaintext_buffer[p_len] = '\0';  
 
-    free(ciphertext);  // Free allocated memory
-    free(iv);  // Free allocated memory
-    free(tag);  // Free allocated memory
+    free(ciphertext);  
+    free(iv);  
+    free(tag);  
 
-    return p_len;  // Return the length of the decrypted plaintext
+    return p_len;
 }
 
 
@@ -135,8 +132,6 @@ int main(int argc, char **argv)
             bank_process_remote_command(bank, plaintext_buf, n);
         }
     }
-
-    printf("Freeing the bank!\n");
     bank_free(bank);
     
     return EXIT_SUCCESS;
