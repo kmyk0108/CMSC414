@@ -214,9 +214,8 @@ int check_pin(char *atm_file, char *card_file, char *username, char *plaintext_p
     unsigned char encrypted_attempt_pin[AES_BLOCK_SIZE];
 
     // encrypt the plaintext pin
-    int c_len = encrypt((unsigned char *)plaintext_pin, strlen((char *)plaintext_pin), pin_key, iv, encrypted_attempt_pin);
-    // printf("Ciphertext length: %d\n", c_len);
-    // printf("%s\n%s\n", stored_pin, encrypted_attempt_pin);
+    encrypt((unsigned char *)plaintext_pin, strlen((char *)plaintext_pin), pin_key, iv, encrypted_attempt_pin);
+
     // compare stored_pin with encrypted_attempt_pin
     if (memcmp(stored_pin, encrypted_attempt_pin, AES_BLOCK_SIZE) == 0)
     {
@@ -419,7 +418,8 @@ int withdraw(ATM *atm, char *username, char *amount, char *recvline)
     return 0; // Success
 }
 
-int balance(ATM *atm, char *username, char *recvline) {
+int balance(ATM *atm, char *username, char *recvline)
+{
     unsigned char plaintext[MAX_USERNAME_LEN + strlen("balance ") + 1];
     snprintf((char *)plaintext, sizeof(plaintext), "balance %s", username);
 
@@ -566,6 +566,11 @@ void atm_process_command(ATM *atm, char *command)
     }
     else if (strstr(command, "withdraw"))
     {
+        if (!atm->is_logged_in)
+        {
+            printf("No user logged in\n");
+            return;
+        }
         char *args[2]; // Expected arguments: command, amount
         char *token = strtok(command_copy, " ");
         int arg_count = 0;
@@ -608,6 +613,12 @@ void atm_process_command(ATM *atm, char *command)
     }
     else if (strstr(command, "balance"))
     {
+        if (!atm->is_logged_in)
+        {
+            printf("No user logged in\n");
+            return;
+        }
+        
         char *token = strtok(command_copy, " ");
 
         if (strcmp(token, "balance") != 0 || strtok(NULL, " ") != NULL)

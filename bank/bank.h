@@ -50,6 +50,7 @@ ssize_t bank_send(Bank *bank, char *data, size_t data_len);
 ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len);
 void bank_process_local_command(Bank *bank, char *command, size_t len);
 void bank_process_remote_command(Bank *bank, char *command, size_t len);
+int extract_msg_key(char *bank_file, unsigned char *key);
 
 #endif
 

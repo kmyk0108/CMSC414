@@ -217,7 +217,6 @@ int check_create_user(char *command, char *username, char *pin, char *init_balan
 
 void create_card(Bank *bank, char *username, unsigned char *plaintext_pin)
 {
-    // printf("AA\n");
     // try to create a .card file for the user
     size_t card_file_size = strlen(username) + strlen(".card") + 1;
     char *card_file = (char *)malloc(card_file_size);
@@ -227,8 +226,6 @@ void create_card(Bank *bank, char *username, unsigned char *plaintext_pin)
         fprintf(stderr, "Error: Memory allocation failed.\n");
         return; // Handle memory allocation failure
     }
-
-    // printf("BB\n");
 
     // Safely copy the username into the buffer
     strncpy(card_file, username, card_file_size - 1);
@@ -255,10 +252,7 @@ void create_card(Bank *bank, char *username, unsigned char *plaintext_pin)
 
         unsigned char encrypted_pin[AES_BLOCK_SIZE];
 
-        int c_len = encrypt(plaintext_pin, strlen((char *)plaintext_pin), pin_key, iv, encrypted_pin);
-        // printf("Ciphertext length: %d\n", c_len);
-        // printf("Ciphertext is:\n");
-        // BIO_dump_fp(stdout, (const char *)encrypted_pin, ciphertext_len);
+        encrypt(plaintext_pin, strlen((char *)plaintext_pin), pin_key, iv, encrypted_pin);
 
         // write the encrypted pin and IV into .card file
         size_t written = fwrite(encrypted_pin, 1, AES_BLOCK_SIZE, file);
@@ -289,39 +283,6 @@ int check_deposit(char *command, char *username, char *amount)
 {
     return strcmp(command, "deposit") == 0 && valid_username(username) && valid_balance(amount);
 }
-
-// void withdraw(Bank *bank, char *command, char *sendline)
-// {
-//     char *username = strtok(command, " ");
-//     char *withdraw_command = strtok(NULL, " ");
-//     char *amount = strtok(NULL, " ");
-//     // printf("Amount: %s\n", amount);
-
-//     if (!valid_balance(amount))
-//     {
-//         printf("HI\n");
-//     }
-
-//     if (strcmp(withdraw_command, "withdraw") == 0 && amount != NULL && strtok(NULL, " ") == NULL && valid_balance(amount))
-//     {
-//         User *user = get_user(bank, username);
-//         int int_amount = atoi(amount);
-//         if (int_amount > user->balance)
-//         {
-//             sprintf(sendline, "Insufficient funds\n");
-//         }
-//         else
-//         {
-//             user->balance -= int_amount;
-//             sprintf(sendline, "$%s dispensed\n", amount);
-//         }
-//     }
-//     else
-//     {
-//         sprintf(sendline, "Usage: withdraw <amt>\n");
-//     }
-//     return;
-// }
 
 void bank_process_local_command(Bank *bank, char *command, size_t len)
 {
@@ -400,26 +361,8 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
         }
 
         create_user(bank, username, init_balance);
-
-        int balance_int = atoi(init_balance);
-        int user_len = strlen(username);
-
-        // list_add(bank->users, username, &balance_int);
-
-        // Add the new user to the users list
-        // char *bal_str;
-        // char *usr_str;
-        // bal_str = calloc(MAX_INT_BYTES, 1);
-        // usr_str = calloc(user_len + 1, 1);
-        // sprintf(bal_str, "%d", balance_int); // conversion to string for list
-        // strncpy(usr_str, user, user_len);
-        // list_add(bank->users, usr_str, bal_str); // Passing the dynamically allocated strings
-        // usr_str = NULL;
-        // bal_str = NULL;
-
-        // list_add(bank->users, username, (void *)(intptr_t)init_balance);
-
         create_card(bank, username, (unsigned char *)pin);
+
     }
     else if (strstr(command, "deposit"))
     {
