@@ -14,11 +14,6 @@
 
 #define ERROR_FILE_CREATION 64
 
-#define AES_BLOCK_SIZE 16
-#define AES_KEY_SIZE 32
-#define IV_SIZE 16
-#define TAG_SIZE 12
-
 #define MAX_USERNAME_LEN 250
 #define MAX_INT_BYTES 11
 
@@ -47,6 +42,7 @@ Bank *bank_create(char *bank_file)
 
     // Set up the protocol state
     bank->bank_file = bank_file;
+    bank->user_list_head = NULL;
     // bank->users = list_create(20);
 
     return bank;
@@ -64,7 +60,6 @@ void free_users(Bank *bank)
     }
     bank->user_list_head = NULL;
 }
-
 
 void bank_free(Bank *bank)
 {
@@ -122,7 +117,6 @@ void create_user(Bank *bank, char *username, char *balance)
     return;
 }
 
-
 int extract_pin_key(char *bank_file, unsigned char *key)
 {
     // Ensure that exactly one argument is provided
@@ -143,9 +137,37 @@ int extract_pin_key(char *bank_file, unsigned char *key)
     return 0;
 }
 
+int extract_msg_key(char *bank_file, unsigned char *key)
+{
+    // Ensure that exactly one argument is provided
+    FILE *bank_fd = fopen(bank_file, "rb");
+    if (bank_fd == NULL)
+    {
+        perror("Error opening bank initialization file");
+        return 1;
+    }
+
+    if (fseek(bank_fd, AES_KEY_SIZE, SEEK_SET) != 0)
+    {
+        perror("Error seeking to the second key");
+        fclose(bank_fd);
+        return 1;
+    }
+
+    size_t bytes_read = fread(key, sizeof(char), AES_KEY_SIZE, bank_fd);
+    if (bytes_read != AES_KEY_SIZE)
+    {
+        perror("Error reading file");
+        fclose(bank_fd);
+        return 1;
+    }
+    fclose(bank_fd);
+    return 0;
+}
+
 int valid_username(char *username)
 {
-    if (strlen(username) > MAX_USERNAME_LEN)
+    if (strlen(username) > MAX_USERNAME_LEN || strlen(username) == 0)
     {
         return 0;
     }
@@ -537,10 +559,128 @@ void bank_process_local_command(Bank *bank, char *command, size_t len)
     return;
 }
 
+unsigned char *encrypt_message(Bank *bank, unsigned char *plaintext, size_t *sendline_len)
+{
+    unsigned char msg_key[AES_KEY_SIZE];
+    extract_msg_key(bank->bank_file, msg_key);
+
+    unsigned char iv[GCM_IV_SIZE];
+    generate_rand_bytes(GCM_IV_SIZE, iv);
+
+    // Encrypt the message
+    unsigned char ciphertext[strlen((char *)plaintext) + AES_BLOCK_SIZE]; // make sure the ciphertext buffer is large enough to store the encrypted message
+    unsigned char tag[TAG_SIZE];
+
+    int c_len = gcm_encrypt(plaintext, strlen((char *)plaintext), NULL, 0, msg_key, iv, GCM_IV_SIZE, ciphertext, tag);
+    // printf("Ciphertext: %s\n", ciphertext);   // Debugging
+    // printf("Ciphertext length: %d\n", c_len); // Debugging
+
+    // Prepare the lengths
+    int length_ciphertext = c_len;
+
+    // Calculate total sendline length
+    *sendline_len = sizeof(int) + length_ciphertext + GCM_IV_SIZE + TAG_SIZE;
+
+    // Allocate buffer for sending the message to the bank
+    unsigned char *sendline = malloc(*sendline_len);
+
+    if (sendline == NULL)
+    {
+        printf("Memory allocation failed!\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Pack the message into sendline
+    int offset = 0;
+    memcpy(sendline + offset, &length_ciphertext, sizeof(int)); // Length of ciphertext
+    offset += sizeof(int);
+
+    memcpy(sendline + offset, ciphertext, length_ciphertext); // Ciphertext
+    offset += length_ciphertext;
+
+    memcpy(sendline + offset, iv, GCM_IV_SIZE); // IV
+    offset += GCM_IV_SIZE;
+
+    memcpy(sendline + offset, tag, TAG_SIZE); // Tag
+
+    return sendline; // Return the pointer to sendline
+}
+
 void bank_process_remote_command(Bank *bank, char *command, size_t len)
 {
-    char sendline[10000];
+    size_t sendline_len = 0;
+    unsigned char response[1000];
+    memset(response, 0, sizeof(response));
 
-    // bank_send(bank, sendline, strlen(sendline));
+    if (strstr(command, "begin-session"))
+    {
+        char username[MAX_USERNAME_LEN] = {0};
+
+        // Extract username from the command
+        if (sscanf(command, "begin-session %s", username) == 1)
+        {
+            // Check if the user exists
+            if (get_user(bank, username) != NULL)
+            {
+                snprintf((char *)response, sizeof(response), "success");
+            }
+            else
+            {
+                snprintf((char *)response, sizeof(response), "No such user");
+            }
+        }
+    }
+    else if (strstr(command, "withdraw"))
+    {
+        char username[MAX_USERNAME_LEN] = {0};
+        char amount[MAX_INT_BYTES] = {0};
+
+        // Extract username and amount
+        int matches = sscanf(command, "withdraw %s %s", username, amount);
+
+        if (matches == 2)
+        {
+            User *curr_user = get_user(bank, username);
+            if (curr_user)
+            {
+                int curr_balance = curr_user->balance;
+                int withdraw_amt = atoi(amount);
+                if (withdraw_amt > curr_balance)
+                {
+                    snprintf((char *)response, sizeof(response), "Insufficient funds");
+                }
+                else
+                {
+                    curr_user->balance -= withdraw_amt;
+                    snprintf((char *)response, sizeof(response), "$%d dispensed", withdraw_amt);
+                }
+            }
+            else
+            {
+                snprintf((char *)response, sizeof(response), "User not found");
+            }
+        }
+        else
+        {
+            snprintf((char *)response, sizeof(response), "Invalid withdraw command");
+        }
+    }
+
+    else if (strstr(command, "balance"))
+    {
+        char username[MAX_USERNAME_LEN] = {0};
+
+        // Extract username from the command
+        if (sscanf(command, "balance %s", username) == 1)
+        {
+            User *curr_user = get_user(bank, username);
+            int curr_balance = curr_user->balance;
+            snprintf((char *)response, sizeof(response), "$%d", curr_balance);
+        }
+    }
+    unsigned char *sendline = encrypt_message(bank, response, &sendline_len);
+    bank_send(bank, (char *)sendline, sendline_len);
+    free(sendline);
+
     return;
 }

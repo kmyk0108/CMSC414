@@ -41,7 +41,6 @@ typedef struct _Bank
     // Protocol state
     char * bank_file;
     User * user_list_head;
-    // List * users;
 
 } Bank;
 

@@ -9,7 +9,6 @@
 #include <openssl/err.h>
 #include <openssl/conf.h>
 
-
 int generate_rand_bytes(int size, unsigned char *bytes) {
     if (RAND_bytes(bytes, size) != 1) {
         fprintf(stderr, "Error generating random key\n");
