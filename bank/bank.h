@@ -46,7 +46,7 @@ typedef struct _Bank
 
 } Bank;
 
-Bank* bank_create();
+Bank* bank_create(const char * filename);
 void bank_free(Bank *bank);
 ssize_t bank_send(Bank *bank, char *data, size_t data_len);
 ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len);

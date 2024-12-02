@@ -3,7 +3,7 @@ CC = gcc
 ifeq ($(CC),clang)
   STACK_FLAGS = -fno-stack-protector -Wl,-allow_stack_execute
 else
-  STACK_FLAGS = -fno-stack-protector -z execstack
+  STACK_FLAGS = -fno-stack-protector
 endif
 
 CFLAGS = ${STACK_FLAGS} -Wall -Iutil -Iatm -Ibank -Irouter -I. -I/usr/include/openssl
