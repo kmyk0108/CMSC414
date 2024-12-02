@@ -15,7 +15,7 @@ static const char prompt[] = "ATM: ";
 
 int main(int argc, char **argv)
 {
-    char user_input[1000];
+    char user_input[10000];
 
     if (argc != 2)
     {
@@ -37,7 +37,7 @@ int main(int argc, char **argv)
         return ERROR_FILE_OPEN;
     }
 
-    ATM *atm = atm_create();
+    ATM *atm = atm_create(atm_file);
 
     printf("%s", prompt);
     fflush(stdout);
@@ -45,6 +45,8 @@ int main(int argc, char **argv)
     while (fgets(user_input, 10000,stdin) != NULL)
     {
         atm_process_command(atm, user_input);
+
+        // change the prompt to "ATM (<username>): " if a user is logged in
         if (atm->is_logged_in) {
             printf("ATM (%s): ", atm->curr_user);
         } else {
@@ -52,5 +54,6 @@ int main(int argc, char **argv)
         }
         fflush(stdout);
     }
+    atm_free(atm);
 	return EXIT_SUCCESS;
 }

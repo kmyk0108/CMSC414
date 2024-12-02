@@ -1,9 +1,3 @@
-/*
- * The main program for the Bank.
- *
- * You are free to change this as necessary.
- */
-
 #include <string.h>
 #include <sys/select.h>
 #include <stdio.h>
@@ -14,6 +8,7 @@
 #include <errno.h>
 #include "bank.h"
 #include "ports.h"
+#include "encryption/enc.h"
 
 #define ERROR_USAGE 62
 <<<<<<< HEAD
@@ -26,11 +21,62 @@
 
 static const char prompt[] = "BANK: ";
 
+/* 
+    Decrypt an AES-256-GCM encoded message sent to the bank. If the extracted authentication tag differs from that
+    created by gcm_encrypt(), the program will terminate.
+*/
+int decrypt_message(Bank *bank, char *command, size_t len, char *plaintext_buffer, size_t buffer_size) {
+    char received_data[10000];
+    memcpy(received_data, command, len);
+
+    int length_ciphertext;
+    int offset = 0;
+    memcpy(&length_ciphertext, received_data + offset, sizeof(int)); // Get length of ciphertext
+    offset += sizeof(int);
+
+    // Extract the ciphertext, iv, and tag
+    unsigned char *ciphertext = malloc(length_ciphertext);
+    memcpy(ciphertext, received_data + offset, length_ciphertext);
+    offset += length_ciphertext;
+
+    unsigned char *iv = malloc(GCM_IV_SIZE);
+    memcpy(iv, received_data + offset, GCM_IV_SIZE);
+    offset += GCM_IV_SIZE;
+
+    unsigned char *tag = malloc(TAG_SIZE);
+    memcpy(tag, received_data + offset, TAG_SIZE);
+
+    // Retrieve the AES message key from .bank
+    unsigned char msg_key[AES_KEY_SIZE];
+    extract_msg_key(bank->bank_file, msg_key);
+
+    // Decrypt the message
+    int p_len = gcm_decrypt(ciphertext, length_ciphertext, NULL, 0, tag, msg_key, iv, GCM_IV_SIZE, (unsigned char *)plaintext_buffer);
+
+    // Handle decryption errors
+    if (p_len < 0) {
+        free(ciphertext);  
+        free(iv);  
+        free(tag);  
+        return -1;
+    }
+
+    plaintext_buffer[p_len] = '\0';  
+
+    free(ciphertext);  
+    free(iv);  
+    free(tag);  
+
+    return p_len;
+}
+
+
+
 int main(int argc, char **argv)
 {
     int n;
-    char sendline[1000];
-    char recvline[1000];
+    char sendline[10000];
+    char recvline[10000];
 
     if (argc != 2)
     {
@@ -59,9 +105,9 @@ int main(int argc, char **argv)
         perror("Error opening bank initialization file");
         return ERROR_FILE_OPEN;
     }
+    fclose(bank_fd);
 
-    char * filename = strdup(argv[1]);
-    Bank * bank = bank_create(filename);
+    Bank * bank = bank_create(bank_file);
 
     printf("%s", prompt);
     fflush(stdout);
@@ -84,9 +130,15 @@ int main(int argc, char **argv)
         else if (FD_ISSET(bank->sockfd, &fds))
         {
             n = bank_recv(bank, recvline, 10000);
-            bank_process_remote_command(bank, recvline, n);
+            char plaintext_buf[1000];
+            if (decrypt_message(bank, recvline, n, plaintext_buf, 1000) == -1) {
+                bank_free(bank);
+                exit(-1);
+            }
+            bank_process_remote_command(bank, plaintext_buf, n);
         }
     }
-
+    bank_free(bank);
+    
     return EXIT_SUCCESS;
 }

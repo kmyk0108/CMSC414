@@ -5,16 +5,15 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include "encryption/enc.h"
 
-
-// Define return codes for errors and success
 #define ERROR_USAGE 62
 #define ERROR_FILE_EXISTS 63
 #define ERROR_FILE_CREATION 64
 #define SUCCESS 0
 
-
-// Main function that handles input, checks for errors, and creates the files
+// argv[0]: <path1>/init 
+// argv[1]: <path2>/<init-fname>
 int main(int argc, char *argv[])
 {
     // Ensure that exactly one argument is provided
@@ -24,7 +23,7 @@ int main(int argc, char *argv[])
         return ERROR_USAGE;
     }
 
-
+    // Create the directories specified in <path2> if they don't exist
     char *path_copy = malloc(strlen(argv[1]) + 1);
     strcpy(path_copy, argv[1]);
     char *token = strtok(path_copy, "/");
@@ -32,39 +31,43 @@ int main(int argc, char *argv[])
     char *string = malloc(strlen(token) + 1);
     strcat(string, token);
 
-
     while (next_token != NULL)
     {
         mkdir(string, 0777);
 
-
         token = next_token;
         next_token = strtok(NULL, "/");
 
-
         char *string_copy = malloc(strlen(string));
         strcpy(string_copy, string);
-
 
         string = malloc(strlen(string) + strlen(token) + 2);
         strcat(string, string_copy);
         strcat(string, "/");
         strcat(string, token);
 
-
         free(string_copy);
     }
-   
 
-
+    // Create the <init-fname>.bank and <init-fname>.atm files
     char bank_file[1024];
     char atm_file[1024];
 
+    snprintf(bank_file, sizeof(bank_file), "%s.bank", argv[1]);
+    snprintf(atm_file, sizeof(atm_file), "%s.atm", argv[1]);
 
-    snprintf(bank_file, sizeof(bank_file), "%s.bank", string);
-    snprintf(atm_file, sizeof(bank_file), "%s.atm", string);
+    // Remove leading slash if it exists
+    if (bank_file[0] == '/')
+    {
+        memmove(bank_file, bank_file + 1, strlen(bank_file));
+    }
 
+    if (atm_file[0] == '/')
+    {
+        memmove(atm_file, atm_file + 1, strlen(atm_file));
+    }
 
+    // Check if files already exist
     struct stat st;
     if (stat(bank_file, &st) == 0 || stat(atm_file, &st) == 0)
     {
@@ -72,41 +75,59 @@ int main(int argc, char *argv[])
         return ERROR_FILE_EXISTS;
     }
 
-
-    // Create the .bank file with the O_EXCL flag to avoid race conditions
-    int bank_fd = open(bank_file, O_WRONLY | O_CREAT | O_EXCL, 0666);
-    if (bank_fd == -1)
-    {
-        perror("Errordkfsjl");
-        return ERROR_FILE_CREATION;
-    }
-
-
-    int atm_fd = open(atm_file, O_WRONLY | O_CREAT | O_EXCL, 0666);
-    if (atm_fd == -1)
+    FILE *bank_fp = fopen(bank_file, "wb");
+    if (!bank_fp)
     {
         perror("Error creating initialization files");
         return ERROR_FILE_CREATION;
     }
 
+    FILE *atm_fp = fopen(atm_file, "wb");
+    if (!atm_fp)
+    {
+        perror("Error creating initialization files");
+        fclose(bank_fp);
+        return ERROR_FILE_CREATION;
+    }
 
-    // Write a placeholder content to the .bank file
-    const char *bank_content = "This is a placeholder for the bank's configuration.\n";
-    write(bank_fd, bank_content, strlen(bank_content));
-    close(bank_fd); // Close the bank file after writing
+    // Generate keys
+    unsigned char aes_pin_key[AES_KEY_SIZE];
+    unsigned char aes_message_key[AES_KEY_SIZE];
 
+    if (!generate_rand_bytes(AES_KEY_SIZE, aes_pin_key) ||
+        !generate_rand_bytes(AES_KEY_SIZE, aes_message_key))
+    {
+        fclose(bank_fp);
+        fclose(atm_fp);
+        return 1;
+    }
 
-    // Write a placeholder content to the .atm file
-    const char *atm_content = "This is a placeholder for the ATM's configuration.\n";
-    write(atm_fd, atm_content, strlen(atm_content));
-    close(atm_fd); // Close the ATM file after writing
+    // Write keys to the .bank file
+    if (fwrite(aes_pin_key, 1, AES_KEY_SIZE, bank_fp) != AES_KEY_SIZE ||
+        fwrite(aes_message_key, 1, AES_KEY_SIZE, bank_fp) != AES_KEY_SIZE)
+    {
+        perror("Error writing to .bank file");
+        fclose(bank_fp);
+        fclose(atm_fp);
+        return ERROR_FILE_CREATION;
+    }
 
+    // Write keys to the .atm file
+    if (fwrite(aes_pin_key, 1, AES_KEY_SIZE, atm_fp) != AES_KEY_SIZE ||
+        fwrite(aes_message_key, 1, AES_KEY_SIZE, atm_fp) != AES_KEY_SIZE)
+    {
+        perror("Error writing to .atm file");
+        fclose(bank_fp);
+        fclose(atm_fp);
+        return ERROR_FILE_CREATION;
+    }
 
+    memset(aes_pin_key, 0, AES_KEY_SIZE);
+    memset(aes_message_key, 0, AES_KEY_SIZE);
 
+    fclose(bank_fp);
+    fclose(atm_fp);
 
-    free(string);
-    free(path_copy);
-
-
+    printf("Successfully initialized bank state\n");
     return SUCCESS;
 }

@@ -19,6 +19,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
+#include "util/hash_table.h"
+#include "util/list.h"
+
+// Store the username and current balance of each user
+typedef struct User {
+    char username[251];
+    int balance;
+    struct User *next;
+} User;
+
 
 typedef struct _Bank
 {
@@ -26,11 +36,14 @@ typedef struct _Bank
     int sockfd;
     struct sockaddr_in rtr_addr;
     struct sockaddr_in bank_addr;
-    char * bank_file;
-    char users[500][263];
-    int user_index;
+    
+
     // Protocol state
-    // TODO add more, as needed
+    char * bank_file;
+
+    // Maintain a list of users
+    User * user_list_head;
+
 } Bank;
 
 Bank* bank_create(const char * filename);
@@ -39,6 +52,7 @@ ssize_t bank_send(Bank *bank, char *data, size_t data_len);
 ssize_t bank_recv(Bank *bank, char *data, size_t max_data_len);
 void bank_process_local_command(Bank *bank, char *command, size_t len);
 void bank_process_remote_command(Bank *bank, char *command, size_t len);
+int extract_msg_key(char *bank_file, unsigned char *key);
 
 #endif
 
