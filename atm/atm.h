@@ -32,6 +32,7 @@ typedef struct _ATM
     struct sockaddr_in atm_addr;
 
     // Protocol state
+    char * atm_file;
     char * curr_user;
     int is_logged_in;
 

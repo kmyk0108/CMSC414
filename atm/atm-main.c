@@ -50,7 +50,7 @@ int main(int argc, char **argv)
         return ERROR_FILE_OPEN;
     }
 
-    ATM *atm = atm_create();
+    ATM *atm = atm_create(atm_file);
 
     printf("%s", prompt);
     fflush(stdout);
@@ -66,5 +66,6 @@ int main(int argc, char **argv)
         fflush(stdout);
     }
     free_login_attempts(atm);
+    atm_free(atm);
 	return EXIT_SUCCESS;
 }

@@ -19,12 +19,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdio.h>
+#include "util/hash_table.h"
+#include "util/list.h"
 
-typedef struct User {
-    char username[251];
-    int balance;
-    struct User *next;
-} User;
 
 typedef struct _Bank
 {
@@ -32,14 +29,12 @@ typedef struct _Bank
     int sockfd;
     struct sockaddr_in rtr_addr;
     struct sockaddr_in bank_addr;
-    // char * bank_file;
-    // char users[500][263];
-    // int user_index;
-    User * user_list_head;
-
+    
 
     // Protocol state
-    // TODO add more, as needed
+    char * bank_file;
+    List * users;
+
 } Bank;
 
 Bank* bank_create();

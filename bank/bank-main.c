@@ -20,18 +20,6 @@
 
 static const char prompt[] = "BANK: ";
 
-// Free the login attempts list
-void free_users(Bank *bank)
-{
-    User *current = bank->user_list_head;
-    while (current != NULL)
-    {
-        User *tmp = current;
-        current = current->next;
-        free(tmp);
-    }
-    bank->user_list_head = NULL;
-}
 
 int main(int argc, char **argv)
 {
@@ -66,9 +54,9 @@ int main(int argc, char **argv)
         perror("Error opening bank initialization file");
         return ERROR_FILE_OPEN;
     }
+    fclose(bank_fd);
 
-    char * filename = strdup(argv[1]);
-    Bank * bank = bank_create(filename);
+    Bank * bank = bank_create(bank_file);
 
     printf("%s", prompt);
     fflush(stdout);
@@ -95,6 +83,8 @@ int main(int argc, char **argv)
         }
     }
 
-    free_users(bank);
+    list_free(bank->users);
+    bank_free(bank);
+    
     return EXIT_SUCCESS;
 }
