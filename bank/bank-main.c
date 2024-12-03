@@ -11,13 +11,7 @@
 #include "encryption/enc.h"
 
 #define ERROR_USAGE 62
-<<<<<<< HEAD
-#define ERROR_FILE_EXISTS 63
-#define ERROR_FILE_CREATION 64
-#define SUCCESS 0
-=======
 #define ERROR_FILE_OPEN 64
->>>>>>> 8ef981c3d52724e196d9f19fdc5e985f8e9a842b
 
 static const char prompt[] = "BANK: ";
 
