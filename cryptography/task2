@@ -1,0 +1,473 @@
+#!/usr/bin/python3
+import sys
+
+# _lno = lambda: print(__file__,sys._getframe().f_back.f_lineno,file=sys.stderr)
+
+# types: acc, trans, inv, bal, amt, when
+reqTypesList = [] # entire list of tuples (includes all data from file): as (hexdata, type)
+                # i.e. (4f2d6e009a764394a7cccd4c4af2c276, 'acc'), (6278e1a006f32e83b0e7355e3dc84339, 'trans')
+
+finalTransactions = [] 
+
+accDict = dict()
+
+def toArray(in_file):  # put .in file data into array
+    count=0
+    arr = []
+    with open(in_file, 'rb') as file:
+        while True:
+            data = file.read(16)
+            if not data:
+                break
+            hexdata = data.hex()
+            arr.append(hexdata)
+            count+=1
+    return arr
+
+# use finalTransactions list to output everything
+def writeOutput():
+
+    with open('task2.out', 'wb') as out_file:
+        for curr in finalTransactions:
+            for line in curr[1:]:
+                bindata = bytes.fromhex(line)
+                out_file.write(bindata)
+              
+        # after adding all transactions, add the TRANSFER REPLAY
+        replay = getSingleAcc()
+        if replay !=None:
+            for line in replay[1:]:
+                bindata = bytes.fromhex(line)
+                out_file.write(bindata)
+
+def runIt(fullArr): # run any fns to see outputs or whateva!
+    if not tryTransferInvoice(fullArr):
+        if not tryTransferBalance(fullArr):
+            if not tryInvoiceTransfer(fullArr):
+                if not tryInvoiceBalance(fullArr):
+                    if not tryBalanceTransfer(fullArr):
+                        #print("\n\n\nIDKKDIDKIDKIDKIDKIDK")
+                        return
+    printTypeOnly()        
+    writeOutput()
+    
+# this function runs everytime a transaction is added to list: adds ACCOUNT line(s)
+# adds all accounts to see which one is UNIQUE
+def updateFreq(accDict, acc):
+    if acc in accDict:
+        accDict[acc] += 1
+    else:
+        accDict[acc] = 1
+
+def getSingleAcc():
+
+    singleAcc = min(accDict, key=accDict.get)    
+    # if the account with lowest frequency has a freq of just 1, then it might be THE account
+    if accDict.get(singleAcc,0) == 1:
+        result = next((lst for lst in finalTransactions if singleAcc in lst), None)
+        if result[0] == 'TRANSFER':
+            return result
+
+def printTypeOnly():
+    for each in finalTransactions:
+        print(each[0])
+
+
+def tryBalanceTransfer(fullArr):
+    # print("\n\n\nTRYING BALANCE-TRANSFER:")
+    reqTypesList.append((fullArr[0], 'acc'))
+    reqTypesList.append((fullArr[1], 'bal'))
+
+    finalTransactions.append(['BALANCE', fullArr[0],fullArr[1]])
+    updateFreq(accDict, fullArr[0])
+
+    transferLabeled = False
+    invoiceLabeled = False
+
+    i=2
+    while i < len(fullArr):
+        # mark first 2 lines are balance
+        if i+1<len(fullArr) and fullArr[i+1] == reqTypesList[1][0]:
+            reqTypesList.append((fullArr[i], 'acc'))
+            reqTypesList.append((fullArr[i+1], 'bal'))
+            finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+            updateFreq(accDict, fullArr[i])
+            i+=1
+        
+        # check if next transaction is TRANSFER (next 5 lines)
+        elif i+5<len(fullArr) and len(fullArr[i:i+5]) == len(set(fullArr[i:i+5])):
+
+            if transferLabeled == False or (transferLabeled == True and (fullArr[i+1], 'trans') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'trans'))
+                reqTypesList.append((fullArr[i+2], 'when'))
+                reqTypesList.append((fullArr[i+3], 'amt'))
+                reqTypesList.append((fullArr[i+4], 'acc'))
+                transferLabeled = True
+                finalTransactions.append(['TRANSFER', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3],fullArr[i+4]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+4])
+                
+                i+=4
+            
+            elif invoiceLabeled == False or (invoiceLabeled == True and (fullArr[i+1], 'inv') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'inv'))
+                reqTypesList.append((fullArr[i+2], 'amt'))
+                reqTypesList.append((fullArr[i+3], 'acc'))
+                invoiceLabeled = True
+                finalTransactions.append(['INVOICE', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+3])
+                
+                i+=3
+        elif invoiceLabeled == False or (invoiceLabeled == True and (fullArr[i+1], 'inv') in reqTypesList):
+            reqTypesList.append((fullArr[i], 'acc'))
+            reqTypesList.append((fullArr[i+1], 'inv'))
+            reqTypesList.append((fullArr[i+2], 'amt'))
+            reqTypesList.append((fullArr[i+3], 'acc'))
+            invoiceLabeled = True
+            finalTransactions.append(['INVOICE', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3]]) 
+            updateFreq(accDict, fullArr[i])
+            updateFreq(accDict, fullArr[i+3]) 
+
+            i+=3        
+            
+        else:
+            finalTransactions.clear()
+            reqTypesList.clear()
+            accDict.clear()
+            return False
+        i += 1 
+    if len(reqTypesList) == len(fullArr):
+        return True        
+
+def tryInvoiceBalance(fullArr):
+    # print("\n\n\nTRYING INVOICE-BALANCE:")
+    if len(fullArr[0:4]) != len(set(fullArr[0:4])):
+        return False    
+    reqTypesList.append((fullArr[0], 'acc'))
+    reqTypesList.append((fullArr[1], 'inv'))
+    reqTypesList.append((fullArr[2], 'amt'))
+    reqTypesList.append((fullArr[3], 'acc'))
+    
+    finalTransactions.append(['INVOICE', fullArr[0],fullArr[1],fullArr[2],fullArr[3]])
+    updateFreq(accDict, fullArr[0])
+    updateFreq(accDict, fullArr[3])
+    
+    transferLabeled = False
+    balanceLabeled = False    
+
+    i=4
+    while i < len(fullArr):
+        # mark first 4 lines as invoice
+        if i+1<len(fullArr) and fullArr[i+1] == reqTypesList[1][0]:
+            if i+3>len(fullArr):
+                return False
+            else:
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'inv'))
+                reqTypesList.append((fullArr[i+2], 'amt'))
+                reqTypesList.append((fullArr[i+3], 'acc'))
+                finalTransactions.append(['INVOICE', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+3])
+                i +=3 # go to next transaction 
+
+        # check if next transaction is BALANCE (next 2 lines)    
+        elif i+1<len(fullArr) and len(fullArr[i:i+2]) == len(set(fullArr[i:i+2])): # if next 2 lines are unique, then possibly balance
+
+            # if Balance not seen yet OR (Balance seen AND hexdata has already been added to list)
+            if balanceLabeled == False or (balanceLabeled == True and (fullArr[i+1], 'bal') in reqTypesList):
+                # print("invoiceLabeled == False")
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'bal'))
+                finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+                updateFreq(accDict, fullArr[i])
+
+                balanceLabeled = True
+
+                i += 1 # go to next transaction
+
+            elif transferLabeled == False or (transferLabeled == True and (fullArr[i+1], 'trans') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'trans'))
+                reqTypesList.append((fullArr[i+2], 'when'))
+                reqTypesList.append((fullArr[i+3], 'amt'))
+                reqTypesList.append((fullArr[i+4], 'acc'))
+
+                finalTransactions.append(['TRANSFER', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3],fullArr[i+4]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+4])
+
+                transferLabeled = True
+                i+=4
+            else:
+                finalTransactions.clear()
+                reqTypesList.clear()
+                accDict.clear()
+                return False
+            
+        elif transferLabeled == False or (transferLabeled == True and (fullArr[i+1], 'trans') in reqTypesList):
+            reqTypesList.append((fullArr[i], 'acc'))
+            reqTypesList.append((fullArr[i+1], 'trans'))
+            reqTypesList.append((fullArr[i+2], 'when'))
+            reqTypesList.append((fullArr[i+3], 'amt'))
+            reqTypesList.append((fullArr[i+4], 'acc'))
+
+            finalTransactions.append(['TRANSFER', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3],fullArr[i+4]])
+            updateFreq(accDict, fullArr[i])
+            updateFreq(accDict, fullArr[i+4])
+
+            transferLabeled = True
+            i+=4
+                
+        else:
+            finalTransactions.clear()
+            reqTypesList.clear()
+            accDict.clear()
+            return False
+        
+        i += 1  
+
+    if len(reqTypesList) == len(fullArr):
+        return True
+    
+def tryInvoiceTransfer(fullArr):
+    # print("\n\n\nTRYING INVOICE-TRANSFER:")
+    if len(fullArr[0:4]) != len(set(fullArr[0:4])):
+        return False    
+    reqTypesList.append((fullArr[0], 'acc'))
+    reqTypesList.append((fullArr[1], 'inv'))
+    reqTypesList.append((fullArr[2], 'amt'))
+    reqTypesList.append((fullArr[3], 'acc'))
+    
+    finalTransactions.append(['INVOICE', fullArr[0],fullArr[1],fullArr[2],fullArr[3]])
+    updateFreq(accDict, fullArr[0])
+    updateFreq(accDict, fullArr[3])
+
+    transferLabeled = False
+    balanceLabeled = False    
+
+    i=4
+    while i < len(fullArr):
+        # mark first 4 lines as invoice
+        if i+1<len(fullArr) and fullArr[i+1] == reqTypesList[1][0]:
+            if i+3>len(fullArr):
+                return False
+            else:
+               
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'inv'))
+                reqTypesList.append((fullArr[i+2], 'amt'))
+                reqTypesList.append((fullArr[i+3], 'acc'))
+
+                finalTransactions.append(['INVOICE', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+3])
+
+                i +=3 # go to next transaction 
+
+        # check if next transaction is TRANSFER (next 5 lines)    
+        elif i+5<len(fullArr) and len(fullArr[i:i+5]) == len(set(fullArr[i:i+5])): # if next 5 lines are unique, then possibly transfer
+
+            # if Transfer not seen yet OR (Transfer seen AND hexdata has already been added to list)
+            if transferLabeled == False or (transferLabeled == True and (fullArr[i+1], 'trans') in reqTypesList):
+                # print("invoiceLabeled == False")
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'trans'))
+                reqTypesList.append((fullArr[i+2], 'when'))
+                reqTypesList.append((fullArr[i+3], 'amt'))
+                reqTypesList.append((fullArr[i+4], 'acc'))
+                finalTransactions.append(['TRANSFER', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3],fullArr[i+4]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+4])
+
+                transferLabeled = True
+                i += 4 # go to next transaction
+
+            elif balanceLabeled == False or (balanceLabeled == True and (fullArr[i+1], 'bal') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'bal'))
+                finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+                updateFreq(accDict, fullArr[i])
+                balanceLabeled = True
+                i+=1
+        elif balanceLabeled == False or (balanceLabeled == True and (fullArr[i+1], 'bal') in reqTypesList):
+            reqTypesList.append((fullArr[i], 'acc'))
+            reqTypesList.append((fullArr[i+1], 'bal'))
+            finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+            updateFreq(accDict, fullArr[i])
+
+            balanceLabeled = True
+            i+=1
+                
+        else:
+            finalTransactions.clear()
+            reqTypesList.clear()
+            accDict.clear()
+            return False        
+        i += 1  
+    if len(reqTypesList) == len(fullArr):
+        return True
+
+
+def tryTransferBalance(fullArr):
+    # print("\n\n\nTRYING TRANSFER-BALANCE:")
+    if len(fullArr[0:5]) != len(set(fullArr[0:5])):
+        return False    
+    reqTypesList.append((fullArr[0], 'acc'))
+    reqTypesList.append((fullArr[1], 'trans'))
+    reqTypesList.append((fullArr[2], 'when'))
+    reqTypesList.append((fullArr[3], 'amt'))
+    reqTypesList.append((fullArr[4], 'acc'))
+    
+    finalTransactions.append(['TRANSFER', fullArr[0],fullArr[1],fullArr[2],fullArr[3],fullArr[4]])
+    updateFreq(accDict, fullArr[0])
+    updateFreq(accDict, fullArr[4])
+
+    invoiceLabeled = False
+    balanceLabeled = False
+    i=5
+    while i < len(fullArr):
+        # mark first 5 lines as transfer
+        if i+1<len(fullArr) and fullArr[i+1] == reqTypesList[1][0]:
+            if i+4>len(fullArr):
+                return False
+            else:
+               
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'trans'))
+                reqTypesList.append((fullArr[i+2], 'when'))
+                reqTypesList.append((fullArr[i+3], 'amt'))
+                reqTypesList.append((fullArr[i+4], 'acc'))
+
+                finalTransactions.append(['TRANSFER', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3],fullArr[i+4]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+4])
+
+                i +=4 # go to next transaction (should be i+4 but i do i+1 at every run so yeah)
+                
+        # check if next transaction is BAlANCE (next 2 lines)    
+        elif i+1<len(fullArr) and len(fullArr[i:i+2]) == len(set(fullArr[i:i+2])): # if next 2 lines are unique, then possibly balance
+
+            if balanceLabeled == False or (balanceLabeled == True and (fullArr[i+1], 'bal') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'bal'))
+
+                finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+                updateFreq(accDict, fullArr[i])
+
+                balanceLabeled = True
+                i += 1 # go to next transaction
+
+            elif invoiceLabeled == False or (invoiceLabeled == True and (fullArr[i+1], 'inv') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'inv'))
+                reqTypesList.append((fullArr[i+2], 'amt'))
+                reqTypesList.append((fullArr[i+3], 'acc'))
+                finalTransactions.append(['INVOICE', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+3])
+
+                invoiceLabeled = True                
+                i +=3
+
+            else:
+                finalTransactions.clear()
+                reqTypesList.clear()
+                accDict.clear()
+                return False
+        i += 1  
+    
+    if len(reqTypesList) == len(fullArr):
+        return True
+
+def tryTransferInvoice(fullArr):
+    # print("\n\n\nTRYING TRANSFER-INVOICE:")
+    if len(fullArr[0:5]) != len(set(fullArr[0:5])):
+        return False
+
+    reqTypesList.append((fullArr[0], 'acc'))
+    reqTypesList.append((fullArr[1], 'trans'))
+    reqTypesList.append((fullArr[2], 'when'))
+    reqTypesList.append((fullArr[3], 'amt'))
+    reqTypesList.append((fullArr[4], 'acc'))
+    
+    finalTransactions.append(['TRANSFER', fullArr[0],fullArr[1],fullArr[2],fullArr[3],fullArr[4]])
+    updateFreq(accDict, fullArr[0])
+    updateFreq(accDict, fullArr[4])
+
+    invoiceLabeled = False
+    balanceLabeled = False
+
+    i=5
+    while i < len(fullArr):
+        # mark first 5 lines as transfer
+        if i+1<len(fullArr) and fullArr[i+1] == reqTypesList[1][0]:
+            if i+4>len(fullArr):
+                return False
+            else:
+               
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'trans'))
+                reqTypesList.append((fullArr[i+2], 'when'))
+                reqTypesList.append((fullArr[i+3], 'amt'))
+                reqTypesList.append((fullArr[i+4], 'acc'))
+                finalTransactions.append(['TRANSFER', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3],fullArr[i+4]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+4])
+
+                i +=4 # go to next transaction (should be i+4 but i do i+1 at every run so yeah)
+
+        # check if next transaction is INVOICE (next 4 lines)    
+        elif i+4<len(fullArr) and len(fullArr[i:i+4]) == len(set(fullArr[i:i+4])): # if next 4 lines are unique, then possibly invoice
+
+            if invoiceLabeled == False or (invoiceLabeled == True and (fullArr[i+1], 'inv') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'inv'))
+                reqTypesList.append((fullArr[i+2], 'amt'))
+                reqTypesList.append((fullArr[i+3], 'acc'))
+                finalTransactions.append(['INVOICE', fullArr[i],fullArr[i+1],fullArr[i+2],fullArr[i+3]])
+                updateFreq(accDict, fullArr[i])
+                updateFreq(accDict, fullArr[i+3])
+
+                invoiceLabeled = True
+                i += 3 # go to next transaction
+
+            elif balanceLabeled == False or (balanceLabeled == True and (fullArr[i+1], 'bal') in reqTypesList):
+                reqTypesList.append((fullArr[i], 'acc'))
+                reqTypesList.append((fullArr[i+1], 'bal'))
+                finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+                updateFreq(accDict, fullArr[i])
+
+                balanceLabeled = True
+                i += 1
+        elif balanceLabeled == False or (balanceLabeled == True and (fullArr[i+1], 'bal') in reqTypesList):
+            reqTypesList.append((fullArr[i], 'acc'))
+            reqTypesList.append((fullArr[i+1], 'bal'))
+            finalTransactions.append(['BALANCE', fullArr[i],fullArr[i+1]])
+            updateFreq(accDict, fullArr[i])
+
+            balanceLabeled = True
+            i += 1
+        else:
+            finalTransactions.clear()
+            reqTypesList.clear()
+            accDict.clear()
+            return False
+        i += 1
+
+    if len(reqTypesList) == len(fullArr):
+        return True    
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        # print("NEED TWO ARGUMENTS!!!!!")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+    # print(type(input_file)) #str
+    # first: convert inputfile to array of strs, then RUN ITTTT
+    runIt(toArray(input_file))
