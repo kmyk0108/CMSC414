@@ -1,0 +1,9 @@
+exploit
+target
+badfile
+*.o
+*.out
+*.log
+core
+*.tar
+
