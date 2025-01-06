@@ -1,0 +1,9 @@
+"bobnewpass"
+alice
+"name"="bob"
+"company"="bobcomp4',pass=sha1('bobnewpass') WHERE name='bob' -- "
+"email"="alice@hi.com"
+
+"Company" was the only parameter in a function from class.user.php that contained an UPDATE SQL statement (besides the ones for the login from task 1) that had the mysql_real_escape_string commented out.
+This provided the vulnerability for SQL injections, which is where I added in the hashed version of the password I wanted to set for Bob, ONLY WHERE name='bob' in the user table.
+I added the email "alice@hi.com" to be able to edit the profile.

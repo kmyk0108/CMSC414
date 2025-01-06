@@ -1,0 +1,4 @@
+login="bob') -- "
+password=""
+I start with "bob'" to specify that I want to access ONLY bob's information and to close the login single quote so that it doesn't ask for any other inputs (password).
+I then add " -- " to comment out the rest of the SQL line.
